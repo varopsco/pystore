@@ -105,10 +105,17 @@ def datetime_to_int64(df):
     allows for cross language/platform portability
     """
 
-    if isinstance(df.index, dd.Index) and (
-            isinstance(df.index, pd.DatetimeIndex) and
-            any(df.index.nanosecond) > 0):
-        df.index = df.index.astype(np.int64)  # / 1e9
+    # Check if this is a dask DataFrame with datetime index
+    if isinstance(df.index, dd.Index) and "datetime" in str(df.index.dtype):
+        # For dask DataFrames, check nanoseconds using dask operations
+        if hasattr(df.index, 'nanosecond'):
+            has_nanoseconds = (df.index.nanosecond > 0).any()
+            if has_nanoseconds.compute():
+                df.index = df.index.astype(np.int64)
+    # Check if this is a pandas DataFrame with DatetimeIndex
+    elif isinstance(df.index, pd.DatetimeIndex):
+        if hasattr(df.index, 'nanosecond') and (df.index.nanosecond > 0).any():
+            df.index = df.index.astype(np.int64)
 
     return df
 

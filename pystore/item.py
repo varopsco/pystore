@@ -66,11 +66,9 @@ class Item(object):
         if parse_dates and "datetime" not in str(df.index.dtype):
             df.index.name = ""
             if str(df.index.dtype) == "float64":
-                df.index = pd.to_datetime(df.index, unit="s",
-                                          infer_datetime_format=True)
+                df.index = pd.to_datetime(df.index, unit="s")
             elif df.index.values[0] > 1e6:
-                df.index = pd.to_datetime(df.index,
-                                          infer_datetime_format=True)
+                df.index = pd.to_datetime(df.index)
 
         return df
 

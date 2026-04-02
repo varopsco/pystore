@@ -171,9 +171,15 @@ class Collection(object):
             # work on copy
             data = data.copy()
 
+        # Check for nanoseconds before converting to int64
+        has_nanoseconds = False
+        if "datetime" in str(data.index.dtype) and hasattr(data.index, 'nanosecond'):
+            has_nanoseconds = (data.index.nanosecond > 0).any()
+
         if epochdate or "datetime" in str(data.index.dtype):
             data = utils.datetime_to_int64(data)
-            if 1 in data.index.nanosecond and "times" not in kwargs:
+            # The 'times' parameter is only supported by fastparquet engine
+            if has_nanoseconds and self.engine == "fastparquet" and "times" not in kwargs:
                 kwargs["times"] = "int96"
 
         if data.index.name == "":
@@ -413,8 +419,11 @@ class Collection(object):
                 )
 
         try:
-            if epochdate or ("datetime" in str(data.index.dtype) and
-                             any(data.index.nanosecond) > 0):
+            has_nanoseconds = False
+            if "datetime" in str(data.index.dtype) and hasattr(data.index, 'nanosecond'):
+                has_nanoseconds = (data.index.nanosecond > 0).any()
+            
+            if epochdate or ("datetime" in str(data.index.dtype) and has_nanoseconds):
                 data = utils.datetime_to_int64(data)
             old_index = dd.read_parquet(self._item_path(item, as_string=True),
                                         columns=[], engine=self.engine
