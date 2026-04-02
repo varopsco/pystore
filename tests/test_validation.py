@@ -21,6 +21,7 @@
 import os
 import shutil
 import tempfile
+import json
 import pytest
 import logging
 import pandas as pd
@@ -709,6 +710,51 @@ class TestRenameItem:
                                if "Successfully renamed item 'old_item' to 'new_item'" in r.message]
         assert len(rename_complete_logs) == 1
         assert rename_complete_logs[0].levelname == 'INFO'
+
+
+class TestStoreEngineCompatibility:
+    """Regression tests for store engine defaults and legacy metadata."""
+
+    @pytest.fixture(autouse=True)
+    def setup(self):
+        """Set up isolated pystore path for each test."""
+        self.test_dir = tempfile.mkdtemp()
+        pystore.set_path(self.test_dir)
+
+        yield
+
+        pystore.delete_stores()
+        if os.path.exists(self.test_dir):
+            shutil.rmtree(self.test_dir)
+
+    def test_store_defaults_to_pyarrow_when_engine_not_provided(self):
+        """Creating a store without engine should default to pyarrow and persist metadata."""
+        store = pystore.store('default_engine_store')
+
+        assert store.engine == 'pyarrow'
+
+        metadata_path = os.path.join(self.test_dir, 'default_engine_store', 'metadata.json')
+        with open(metadata_path) as f:
+            metadata = json.load(f)
+
+        assert metadata['engine'] == 'pyarrow'
+
+    def test_reopen_legacy_store_without_metadata_sets_default_engine(self):
+        """Reopening store dir without metadata should use pyarrow and write metadata file."""
+        legacy_store_path = os.path.join(self.test_dir, 'legacy_store')
+        os.makedirs(legacy_store_path)
+
+        metadata_path = os.path.join(legacy_store_path, 'metadata.json')
+        assert not os.path.exists(metadata_path)
+
+        store = pystore.store('legacy_store')
+        assert store.engine == 'pyarrow'
+        assert os.path.exists(metadata_path)
+
+        with open(metadata_path) as f:
+            metadata = json.load(f)
+
+        assert metadata['engine'] == 'pyarrow'
 
 
 if __name__ == '__main__':
