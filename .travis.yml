@@ -19,10 +19,11 @@ install:
   - pip install python-snappy
   - pip install Cython
   - pip install -r requirements.txt
+  - pip install pytest pytest-cov
   - pip install .
 
 script:
-  - nosetests
+  - pytest tests/ -v --tb=short
 
 after_success:
   - coveralls
