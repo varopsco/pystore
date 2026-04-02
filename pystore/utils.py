@@ -21,6 +21,7 @@
 import os
 import logging
 from datetime import datetime
+from typing import Any, Dict, List, Optional, Set, Union
 import json
 import shutil
 import pandas as pd
@@ -44,7 +45,7 @@ logger = logging.getLogger('pystore')
 logger.addHandler(logging.NullHandler())
 
 
-def configure_logging(level=logging.INFO, format_string=None):
+def configure_logging(level: int = logging.INFO, format_string: Optional[str] = None) -> None:
     """Configure logging for pystore.
     
     This function can be called at application startup to configure logging
@@ -71,12 +72,13 @@ def configure_logging(level=logging.INFO, format_string=None):
     logger.setLevel(level)
 
 
-def read_csv(urlpath, *args, **kwargs):
-    def rename_dask_index(df, name):
+def read_csv(urlpath: str, *args: Any, **kwargs: Any) -> dd.DataFrame:
+    def rename_dask_index(df: pd.DataFrame, name: str) -> pd.DataFrame:
         df.index.name = name
         return df
 
-    index_col = index_name = None
+    index_col: Optional[Union[str, List[str]]] = None
+    index_name: Optional[str] = None
 
     if "index" in kwargs:
         del kwargs["index"]
@@ -100,7 +102,7 @@ def read_csv(urlpath, *args, **kwargs):
     return df
 
 
-def datetime_to_int64(df):
+def datetime_to_int64(df: pd.DataFrame) -> pd.DataFrame:
     """ convert datetime index to epoch int
     allows for cross language/platform portability
     """
@@ -113,18 +115,18 @@ def datetime_to_int64(df):
     return df
 
 
-def subdirs(d):
+def subdirs(d: str) -> List[str]:
     """ use this to construct paths for future storage support """
     return [o.parts[-1] for o in Path(d).iterdir()
             if o.is_dir() and o.parts[-1] != "_snapshots"]
 
 
-def path_exists(path):
+def path_exists(path: Union[str, Path]) -> bool:
     """ use this to construct paths for future storage support """
     return path.exists()
 
 
-def read_metadata(path):
+def read_metadata(path: Union[str, Path]) -> Optional[Dict[str, Any]]:
     """ use this to construct paths for future storage support """
     dest = make_path(path, "metadata.json")
     if path_exists(dest):
@@ -132,31 +134,34 @@ def read_metadata(path):
             metadata = json.load(f)
             logger.debug(f"Read metadata from {dest}")
             return metadata
+    return None
 
 
-def write_metadata(path, metadata={}):
+def write_metadata(path: Union[str, Path], metadata: Optional[Dict[str, Any]] = None) -> None:
     """ use this to construct paths for future storage support """
+    if metadata is None:
+        metadata = {}
     now = datetime.now()
-    metadata["_updated"] = now.strftime("%Y-%m-%d %H:%I:%S.%f")
+    metadata["_updated"] = now.strftime("%Y-%m-%d %H:%M:%S.%f")
     meta_file = make_path(path, "metadata.json")
     with meta_file.open("w") as f:
         json.dump(metadata, f, ensure_ascii=False)
         logger.debug(f"Wrote metadata to {meta_file}")
 
 
-def make_path(*args):
+def make_path(*args: str) -> Path:
     """ use this to construct paths for future storage support """
     # return Path(os.path.join(*args))
     return Path(*args)
 
 
-def get_path(*args):
+def get_path(*args: str) -> Path:
     """ use this to construct paths for future storage support """
     # return Path(os.path.join(config.DEFAULT_PATH, *args))
     return Path(config.DEFAULT_PATH, *args)
 
 
-def set_path(path):
+def set_path(path: Optional[str] = None) -> Path:
     if path is None:
         path = get_path()
 
@@ -176,23 +181,23 @@ def set_path(path):
     return get_path()
 
 
-def list_stores():
+def list_stores() -> List[str]:
     if not path_exists(get_path()):
         os.makedirs(get_path())
     return subdirs(get_path())
 
 
-def delete_store(store):
+def delete_store(store: str) -> bool:
     shutil.rmtree(get_path(store))
     return True
 
 
-def delete_stores():
+def delete_stores() -> bool:
     shutil.rmtree(get_path())
     return True
 
 
-def set_client(scheduler=None):
+def set_client(scheduler: Optional[str] = None) -> Optional[Client]:
     if scheduler != config._SCHEDULER and config._CLIENT is not None:
         try:
             config._CLIENT.shutdown()
@@ -207,16 +212,16 @@ def set_client(scheduler=None):
     return config._CLIENT
 
 
-def get_client():
+def get_client() -> Optional[Client]:
     return config._CLIENT
 
 
-def set_partition_size(size=None):
+def set_partition_size(size: Optional[int] = None) -> int:
     if size is None:
         size = config.DEFAULT_PARTITION_SIZE * 1
     config.PARTITION_SIZE = size
     return config.PARTITION_SIZE
 
 
-def get_partition_size():
+def get_partition_size() -> int:
     return config.PARTITION_SIZE

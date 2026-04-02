@@ -20,16 +20,17 @@
 
 import os
 import shutil
+from typing import List, Optional, Set
 
 from . import utils
 from .collection import Collection
 
 
 class store(object):
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "PyStore.datastore <%s>" % self.datastore
 
-    def __init__(self, datastore, engine="fastparquet"):
+    def __init__(self, datastore: str, engine: str = "fastparquet") -> None:
 
         datastore_path = utils.get_path()
         if not utils.path_exists(datastore_path):
@@ -51,7 +52,7 @@ class store(object):
 
         self.collections = self.list_collections()
 
-    def _create_collection(self, collection, overwrite=False):
+    def _create_collection(self, collection: str, overwrite: bool = False) -> Collection:
         # create collection (subdir)
         collection_path = utils.make_path(self.datastore, collection)
         if utils.path_exists(collection_path):
@@ -70,7 +71,7 @@ class store(object):
         # return the collection
         return Collection(collection, self.datastore)
 
-    def delete_collection(self, collection):
+    def delete_collection(self, collection: str) -> bool:
         # delete collection (subdir)
         shutil.rmtree(utils.make_path(self.datastore, collection))
 
@@ -78,11 +79,11 @@ class store(object):
         self.collections = self.list_collections()
         return True
 
-    def list_collections(self):
+    def list_collections(self) -> List[str]:
         # lists collections (subdirs)
         return utils.subdirs(self.datastore)
 
-    def collection(self, collection, overwrite=False):
+    def collection(self, collection: str, overwrite: bool = False) -> Collection:
         if collection in self.collections and not overwrite:
             return Collection(collection, self.datastore, self.engine)
 
@@ -90,6 +91,6 @@ class store(object):
         self._create_collection(collection, overwrite)
         return Collection(collection, self.datastore, self.engine)
 
-    def item(self, collection, item):
+    def item(self, collection: str, item: str) -> 'Item':
         # bypasses collection
         return self.collection(collection).item(item)

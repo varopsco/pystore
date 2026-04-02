@@ -18,6 +18,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from typing import List
+
 """ temp fix for fastparquet 0.3.2 and numba 0.45.1"""
 try:
     import numba as _
@@ -31,10 +33,10 @@ from .utils import (
     set_partition_size, get_partition_size,
     list_stores, delete_store, delete_stores)
 
-__version__ = "0.1.22"
-__author__ = "Ran Aroussi"
+__version__: str = "0.1.22"
+__author__: str = "Ran Aroussi"
 
-__all__ = ["store", "read_csv", "get_path", "set_path",
+__all__: List[str] = ["store", "read_csv", "get_path", "set_path",
            "set_client", "get_client",
            "set_partition_size", "get_partition_size",
            "list_stores", "delete_store", "delete_stores"]

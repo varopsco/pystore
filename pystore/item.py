@@ -18,6 +18,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from typing import Any, Dict, List, Optional, Tuple, Union
+
 import dask.dataframe as dd
 import pandas as pd
 
@@ -25,12 +27,14 @@ from . import utils
 
 
 class Item(object):
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "PyStore.item <%s/%s>" % (self.collection, self.item)
 
-    def __init__(self, item, datastore, collection,
-                 snapshot=None, filters=None, columns=None,
-                 engine="fastparquet"):
+    def __init__(self, item: str, datastore: str, collection: str,
+                 snapshot: Optional[str] = None, 
+                 filters: Optional[List[Tuple]] = None, 
+                 columns: Optional[List[str]] = None,
+                 engine: str = "fastparquet") -> None:
         self.engine = engine
         self.datastore = datastore
         self.collection = collection
@@ -60,7 +64,7 @@ class Item(object):
         self.data = dd.read_parquet(
             self._path, engine=self.engine, filters=filters, columns=columns)
 
-    def to_pandas(self, parse_dates=True):
+    def to_pandas(self, parse_dates: bool = True) -> pd.DataFrame:
         df = self.data.compute()
 
         if parse_dates and "datetime" not in str(df.index.dtype):
@@ -74,8 +78,8 @@ class Item(object):
 
         return df
 
-    def head(self, n=5):
+    def head(self, n: int = 5) -> pd.DataFrame:
         return self.data.head(n)
 
-    def tail(self, n=5):
+    def tail(self, n: int = 5) -> pd.DataFrame:
         return self.data.tail(n)

@@ -19,12 +19,14 @@
 # limitations under the License.
 
 import os as os
+from typing import Any, Optional
+
 from .utils import Path
 
-DEFAULT_PATH = os.environ.get("PYSTORE_PATH", Path.home() / "pystore")
-DEFAULT_PARTITION_SIZE = 99e+6  # ~99MB
-PARTITION_SIZE = 99e+6  # ~99MB
+DEFAULT_PATH: str = os.environ.get("PYSTORE_PATH", str(Path.home() / "pystore"))
+DEFAULT_PARTITION_SIZE: float = 99e+6  # ~99MB
+PARTITION_SIZE: float = 99e+6  # ~99MB
 
 # dask distributed
-_SCHEDULER = None
-_CLIENT = None
+_SCHEDULER: Optional[str] = None
+_CLIENT: Any = None
