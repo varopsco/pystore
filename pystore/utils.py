@@ -44,6 +44,9 @@ from . import config
 logger = logging.getLogger('pystore')
 logger.addHandler(logging.NullHandler())
 
+METADATA_FILENAME = "metadata.json"
+LEGACY_METADATA_FILENAME = "pystore_metadata.json"
+
 
 def configure_logging(level: int = logging.INFO, format_string: Optional[str] = None) -> None:
     """Configure logging for pystore.
@@ -177,12 +180,25 @@ def read_metadata(path: Union[str, Path]) -> Optional[Dict[str, Any]]:
     Returns:
         Dictionary with metadata, or None if file doesn't exist
     """
-    dest = make_path(path, "metadata.json")
+    dest = make_path(path, METADATA_FILENAME)
     if path_exists(dest):
         with dest.open() as f:
             metadata = json.load(f)
             logger.debug(f"Read metadata from {dest}")
             return metadata
+
+    legacy_dest = make_path(path, LEGACY_METADATA_FILENAME)
+    if path_exists(legacy_dest):
+        with legacy_dest.open() as f:
+            metadata = json.load(f)
+            logger.debug(f"Read metadata from legacy path {legacy_dest}")
+
+        # Migrate legacy metadata file to current filename for future reads
+        with dest.open("w") as f:
+            json.dump(metadata, f, ensure_ascii=False)
+            logger.debug(f"Migrated metadata to {dest}")
+
+        return metadata
     return None
 
 
@@ -199,8 +215,8 @@ def write_metadata(path: Union[str, Path], metadata: Optional[Dict[str, Any]] = 
         metadata = {}
     
     now = datetime.now()
-    metadata["_updated"] = now.strftime("%Y-%m-%d %H:%I:%S.%f")
-    meta_file = make_path(path, "metadata.json")
+    metadata["_updated"] = now.strftime("%Y-%m-%d %H:%M:%S.%f")
+    meta_file = make_path(path, METADATA_FILENAME)
     with meta_file.open("w") as f:
         json.dump(metadata, f, ensure_ascii=False)
         logger.debug(f"Wrote metadata to {meta_file}")
@@ -256,6 +272,7 @@ def set_path(path: Optional[str]) -> Path:
         if "://" in path_str and "file://" not in path_str:
             raise ValueError(
                 "PyStore currently only works with local file system")
+        path_str = os.path.abspath(os.path.expanduser(path_str))
 
     config.DEFAULT_PATH = path_str
     result_path = get_path()

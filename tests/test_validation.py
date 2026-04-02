@@ -19,14 +19,18 @@
 # limitations under the License.
 
 import os
+import json
 import shutil
 import tempfile
+import uuid
 import pytest
 import logging
 import pandas as pd
 import numpy as np
+from datetime import datetime
 
 import pystore
+from pystore import utils
 
 
 class TestDataValidation:
@@ -709,6 +713,71 @@ class TestRenameItem:
                                if "Successfully renamed item 'old_item' to 'new_item'" in r.message]
         assert len(rename_complete_logs) == 1
         assert rename_complete_logs[0].levelname == 'INFO'
+
+
+class TestUtilsRegressions:
+    """Regression tests for utility behavior."""
+
+    @pytest.fixture(autouse=True)
+    def setup(self):
+        self.test_dir = tempfile.mkdtemp()
+        pystore.set_path(self.test_dir)
+
+        yield
+
+        pystore.delete_stores()
+        if os.path.exists(self.test_dir):
+            shutil.rmtree(self.test_dir)
+
+    def test_read_metadata_legacy_filename_fallback_and_migration(self):
+        """Store should read legacy metadata filename and preserve engine."""
+        legacy_store_path = os.path.join(self.test_dir, "legacy_store")
+        os.makedirs(legacy_store_path)
+
+        legacy_metadata_path = os.path.join(legacy_store_path, "pystore_metadata.json")
+        with open(legacy_metadata_path, "w") as f:
+            json.dump({"engine": "pyarrow"}, f)
+
+        store = pystore.store("legacy_store")
+        assert store.engine == "pyarrow"
+
+        migrated_metadata_path = os.path.join(legacy_store_path, "metadata.json")
+        assert os.path.exists(migrated_metadata_path)
+        with open(migrated_metadata_path) as f:
+            migrated_metadata = json.load(f)
+        assert migrated_metadata["engine"] == "pyarrow"
+
+    def test_set_path_expands_user_home(self):
+        """set_path should expand '~' to the user home directory."""
+        test_subdir = f"pystore_test_{uuid.uuid4().hex}"
+        expected_path = os.path.join(os.path.expanduser("~"), test_subdir)
+        try:
+            resolved_path = pystore.set_path(f"~/{test_subdir}")
+
+            assert str(resolved_path) == expected_path
+            assert pystore.get_path() == utils.Path(expected_path)
+            assert os.path.exists(expected_path)
+        finally:
+            pystore.set_path(self.test_dir)
+            if os.path.exists(expected_path):
+                shutil.rmtree(expected_path)
+
+    def test_write_metadata_uses_minutes_in_updated_timestamp(self, monkeypatch):
+        """_updated timestamp should serialize minutes with %M."""
+        fixed_now = datetime(2024, 1, 2, 15, 47, 30, 123456)
+
+        class FixedDatetime:
+            @classmethod
+            def now(cls):
+                return fixed_now
+
+        monkeypatch.setattr(utils, "datetime", FixedDatetime)
+
+        utils.write_metadata(self.test_dir, {"engine": "pyarrow"})
+        metadata = utils.read_metadata(self.test_dir)
+
+        assert metadata is not None
+        assert metadata["_updated"] == "2024-01-02 15:47:30.123456"
 
 
 if __name__ == '__main__':
