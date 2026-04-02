@@ -22,6 +22,7 @@ import dask.dataframe as dd
 import pandas as pd
 
 from . import utils
+from .utils import PathSecurityError
 
 
 class Item(object):
@@ -31,30 +32,53 @@ class Item(object):
     def __init__(self, item, datastore, collection,
                  snapshot=None, filters=None, columns=None,
                  engine="fastparquet"):
+        # Validate item name to prevent path traversal
+        try:
+            validated_item = utils.validate_path_component(item)
+        except utils.PathSecurityError as e:
+            raise ValueError(
+                f"Invalid item name '{item}': {e}"
+            )
+
         self.engine = engine
         self.datastore = datastore
         self.collection = collection
         self.snapshot = snapshot
-        self.item = item
+        self.item = validated_item
 
-        self._path = utils.make_path(datastore, collection, item)
+        self._path = utils.make_path(datastore, collection, validated_item)
+
+        # Validate path is within datastore
+        utils.validate_path_within_directory(self._path, datastore)
+
         if not self._path.exists():
             raise ValueError(
                 "Item `%s` doesn't exist. "
                 "Create it using collection.write(`%s`, data, ...)" % (
-                    item, item))
+                    validated_item, validated_item))
         if snapshot:
-            snap_path = utils.make_path(
-                datastore, collection, "_snapshots", snapshot)
+            # Validate snapshot name
+            try:
+                validated_snapshot = utils.validate_path_component(snapshot)
+            except utils.PathSecurityError as e:
+                raise ValueError(
+                    f"Invalid snapshot name '{snapshot}': {e}"
+                )
 
-            self._path = utils.make_path(snap_path, item)
+            snap_path = utils.make_path(
+                datastore, collection, "_snapshots", validated_snapshot)
+
+            # Validate snapshot path is within datastore
+            utils.validate_path_within_directory(snap_path, datastore)
+
+            self._path = utils.make_path(snap_path, validated_item)
 
             if not utils.path_exists(snap_path):
-                raise ValueError("Snapshot `%s` doesn't exist" % snapshot)
+                raise ValueError("Snapshot `%s` doesn't exist" % validated_snapshot)
 
             if not utils.path_exists(self._path):
                 raise ValueError(
-                    "Item `%s` doesn't exist in this snapshot" % item)
+                    "Item `%s` doesn't exist in this snapshot" % validated_item)
 
         self.metadata = utils.read_metadata(self._path)
         self.data = dd.read_parquet(

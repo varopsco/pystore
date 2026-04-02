@@ -28,6 +28,7 @@ import multitasking
 from . import utils
 from .item import Item
 from . import config
+from .utils import PathSecurityError
 
 
 logger = logging.getLogger('pystore')
@@ -38,14 +39,45 @@ class Collection(object):
         return "PyStore.collection <%s>" % self.collection
 
     def __init__(self, collection, datastore, engine="fastparquet"):
+        # Validate collection name to prevent path traversal
+        try:
+            self.collection = utils.validate_path_component(collection)
+        except utils.PathSecurityError as e:
+            raise ValueError(
+                f"Invalid collection name '{collection}': {e}"
+            )
+
         self.engine = engine
         self.datastore = datastore
-        self.collection = collection
         self.items = self.list_items()
         self.snapshots = self.list_snapshots()
 
     def _item_path(self, item, as_string=False):
-        p = utils.make_path(self.datastore, self.collection, item)
+        """Get the filesystem path for an item.
+
+        Parameters
+        ----------
+        item : str
+            The item name (will be validated for security)
+        as_string : bool, optional
+            If True, return path as string instead of Path object
+
+        Returns
+        -------
+        Path or str : The item path
+
+        Raises
+        ------
+        PathSecurityError : If the item name is invalid
+        """
+        # Validate item name to prevent path traversal
+        validated_item = utils.validate_path_component(item)
+
+        p = utils.make_path(self.datastore, self.collection, validated_item)
+
+        # Validate that the resulting path is within the datastore
+        utils.validate_path_within_directory(p, self.datastore)
+
         if as_string:
             return str(p)
         return p
@@ -477,14 +509,48 @@ class Collection(object):
         logger.info(f"Successfully appended data to item '{item}' in collection '{self.collection}'")
 
     def create_snapshot(self, snapshot=None):
+        """Create a point-in-time snapshot of the collection.
+
+        Parameters
+        ----------
+        snapshot : str, optional
+            The snapshot name. If None, uses a timestamp-based name.
+
+        Returns
+        -------
+        bool : True if successful
+
+        Raises
+        ------
+        PathSecurityError : If snapshot name contains invalid characters
+        """
         if snapshot:
-            snapshot = "".join(
+            # Sanitize and validate snapshot name
+            # Only allow alphanumeric, dots, and underscores
+            sanitized = "".join(
                 e for e in snapshot if e.isalnum() or e in [".", "_"])
+
+            # Validate the sanitized name
+            try:
+                snapshot = utils.validate_path_component(sanitized)
+            except utils.PathSecurityError as e:
+                raise ValueError(
+                    f"Invalid snapshot name '{snapshot}': {e}"
+                )
+
+            # Ensure snapshot name isn't empty after sanitization
+            if not snapshot:
+                raise ValueError(
+                    f"Snapshot name '{snapshot}' contains no valid characters"
+                )
         else:
             snapshot = str(int(time.time() * 1000000))
 
         src = utils.make_path(self.datastore, self.collection)
         dst = utils.make_path(src, "_snapshots", snapshot)
+
+        # Validate destination is within datastore
+        utils.validate_path_within_directory(dst, self.datastore)
 
         shutil.copytree(src, dst,
                         ignore=shutil.ignore_patterns("_snapshots"))
@@ -498,12 +564,39 @@ class Collection(object):
         return set(snapshots)
 
     def delete_snapshot(self, snapshot):
-        if snapshot not in self.snapshots:
+        """Delete a snapshot from the collection.
+
+        Parameters
+        ----------
+        snapshot : str
+            The snapshot name to delete
+
+        Returns
+        -------
+        bool : True if successful
+
+        Raises
+        ------
+        PathSecurityError : If snapshot name is invalid
+        """
+        # Validate snapshot name
+        try:
+            validated_snapshot = utils.validate_path_component(snapshot)
+        except utils.PathSecurityError as e:
+            raise ValueError(f"Invalid snapshot name '{snapshot}': {e}")
+
+        if validated_snapshot not in self.snapshots:
             # raise ValueError("Snapshot `%s` doesn't exist" % snapshot)
             return True
 
-        shutil.rmtree(utils.make_path(self.datastore, self.collection,
-                                      "_snapshots", snapshot))
+        snapshot_path = utils.make_path(
+            self.datastore, self.collection, "_snapshots", validated_snapshot
+        )
+
+        # Validate path is within datastore
+        utils.validate_path_within_directory(snapshot_path, self.datastore)
+
+        shutil.rmtree(snapshot_path)
         self.snapshots = self.list_snapshots()
         return True
 

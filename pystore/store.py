@@ -23,6 +23,7 @@ import shutil
 
 from . import utils
 from .collection import Collection
+from .utils import PathSecurityError
 
 
 class store(object):
@@ -30,12 +31,23 @@ class store(object):
         return "PyStore.datastore <%s>" % self.datastore
 
     def __init__(self, datastore, engine="fastparquet"):
+        # Validate datastore name to prevent path traversal
+        try:
+            validated_datastore = utils.validate_path_component(datastore)
+        except utils.PathSecurityError as e:
+            raise ValueError(
+                f"Invalid datastore name '{datastore}': {e}"
+            )
 
         datastore_path = utils.get_path()
         if not utils.path_exists(datastore_path):
             os.makedirs(datastore_path)
 
-        self.datastore = utils.make_path(datastore_path, datastore)
+        self.datastore = utils.make_path(datastore_path, validated_datastore)
+
+        # Validate that the datastore path is within the base path
+        utils.validate_path_within_directory(self.datastore, datastore_path)
+
         if not utils.path_exists(self.datastore):
             os.makedirs(self.datastore)
             utils.write_metadata(self.datastore, {"engine": engine})
@@ -52,8 +64,20 @@ class store(object):
         self.collections = self.list_collections()
 
     def _create_collection(self, collection, overwrite=False):
+        # Validate collection name
+        try:
+            validated_collection = utils.validate_path_component(collection)
+        except utils.PathSecurityError as e:
+            raise ValueError(
+                f"Invalid collection name '{collection}': {e}"
+            )
+
         # create collection (subdir)
-        collection_path = utils.make_path(self.datastore, collection)
+        collection_path = utils.make_path(self.datastore, validated_collection)
+
+        # Validate path is within datastore
+        utils.validate_path_within_directory(collection_path, self.datastore)
+
         if utils.path_exists(collection_path):
             if overwrite:
                 self.delete_collection(collection)
@@ -71,8 +95,21 @@ class store(object):
         return Collection(collection, self.datastore)
 
     def delete_collection(self, collection):
+        # Validate collection name
+        try:
+            validated_collection = utils.validate_path_component(collection)
+        except utils.PathSecurityError as e:
+            raise ValueError(
+                f"Invalid collection name '{collection}': {e}"
+            )
+
         # delete collection (subdir)
-        shutil.rmtree(utils.make_path(self.datastore, collection))
+        collection_path = utils.make_path(self.datastore, validated_collection)
+
+        # Validate path is within datastore
+        utils.validate_path_within_directory(collection_path, self.datastore)
+
+        shutil.rmtree(collection_path)
 
         # update collections
         self.collections = self.list_collections()

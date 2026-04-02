@@ -19,6 +19,7 @@
 # limitations under the License.
 
 import os
+import re
 import logging
 from datetime import datetime
 import json
@@ -42,6 +43,139 @@ from . import config
 # Users can call configure_logging() to set up default logging behavior
 logger = logging.getLogger('pystore')
 logger.addHandler(logging.NullHandler())
+
+
+class PathSecurityError(Exception):
+    """Exception raised when a path security violation is detected."""
+    pass
+
+
+def validate_path_component(component, allow_path_separators=False):
+    """Validate a path component for security.
+
+    This function sanitizes individual path components (like collection names,
+    item names, snapshot names) to prevent path traversal attacks.
+
+    Parameters
+    ----------
+    component : str or Path
+        The path component to validate
+    allow_path_separators : bool, optional (default=False)
+        If True, allow path separators in the component (for multi-part paths)
+
+    Returns
+    -------
+    str : The validated and sanitized component
+
+    Raises
+    ------
+    PathSecurityError : If the component contains malicious patterns
+    TypeError : If component is not a string or Path
+    """
+    if component is None:
+        raise PathSecurityError("Path component cannot be None")
+
+    # Convert Path to string
+    if isinstance(component, Path):
+        component = str(component)
+    elif not isinstance(component, (str, bytes)):
+        raise TypeError(f"Path component must be str or Path, got {type(component)}")
+
+    if isinstance(component, bytes):
+        component = component.decode('utf-8', errors='strict')
+
+    # Check for null bytes (potential security bypass)
+    if '\x00' in component or '\0' in component:
+        raise PathSecurityError("Path component contains null bytes")
+
+    # Check for absolute path indicators FIRST (before path separator check)
+    # This gives more specific error messages
+    if component.startswith('/') or (len(component) > 1 and component[1] == ':'):
+        raise PathSecurityError(
+            f"Path component '{component}' appears to be an absolute path"
+        )
+
+    # Check for path traversal sequences
+    if '..' in component:
+        raise PathSecurityError(
+            f"Path component '{component}' contains path traversal sequence '..'"
+        )
+
+    # Check for path separators unless explicitly allowed
+    if not allow_path_separators:
+        # Check for both forward and backward slashes
+        if '/' in component or '\\' in component:
+            raise PathSecurityError(
+                f"Path component '{component}' contains path separators. "
+                "Use make_path() to construct multi-part paths safely."
+            )
+
+    # Check for shell expansion characters that could be dangerous
+    dangerous_chars = ['$', '`', '!', ';', '&', '|', '<', '>', '(', ')']
+    for char in dangerous_chars:
+        if char in component:
+            raise PathSecurityError(
+                f"Path component '{component}' contains potentially dangerous character '{char}'"
+            )
+
+    # Check for leading/trailing whitespace that could cause issues
+    if component != component.strip():
+        raise PathSecurityError(
+            f"Path component '{component}' contains leading or trailing whitespace"
+        )
+
+    # Validate that the component is not empty after validation
+    if not component or component.strip() == '':
+        raise PathSecurityError("Path component is empty or contains only whitespace")
+
+    return component
+
+
+def validate_path_within_directory(path, base_directory):
+    """Validate that a path stays within the specified base directory.
+
+    This is the core security function that prevents path traversal attacks
+    by ensuring the resolved absolute path is within the allowed directory tree.
+
+    Parameters
+    ----------
+    path : str or Path
+        The path to validate
+    base_directory : str or Path
+        The base directory that the path must stay within
+
+    Returns
+    -------
+    Path : The validated absolute path
+
+    Raises
+    ------
+    PathSecurityError : If the path escapes the base directory
+    """
+    if path is None or base_directory is None:
+        raise PathSecurityError("Path and base_directory cannot be None")
+
+    path = Path(path)
+    base_directory = Path(base_directory)
+
+    # Resolve to absolute paths
+    try:
+        resolved_path = path.resolve()
+        resolved_base = base_directory.resolve()
+    except (OSError, RuntimeError) as e:
+        raise PathSecurityError(f"Failed to resolve paths: {e}")
+
+    # Check if the resolved path is within the base directory
+    try:
+        # relative_to will raise ValueError if path is not under base
+        resolved_path.relative_to(resolved_base)
+    except ValueError:
+        raise PathSecurityError(
+            f"Path '{path}' resolves to '{resolved_path}' which is outside "
+            f"the allowed directory '{resolved_base}'"
+        )
+
+    return resolved_path
 
 
 def configure_logging(level=logging.INFO, format_string=None):
@@ -144,9 +278,46 @@ def write_metadata(path, metadata={}):
         logger.debug(f"Wrote metadata to {meta_file}")
 
 
-def make_path(*args):
-    """ use this to construct paths for future storage support """
-    # return Path(os.path.join(*args))
+def make_path(*args, validate=False):
+    """Construct a path from multiple components with optional security validation.
+
+    This is the recommended way to construct paths in PyStore. By default,
+    it does NOT validate components (for backward compatibility and to allow
+    absolute base paths). Use validate=True only for user-provided components.
+
+    Security Note: The primary security check is validate_path_within_directory(),
+    which should be called on the final path to ensure it stays within the
+    allowed directory tree.
+
+    Parameters
+    ----------
+    *args : str or Path
+        Path components to join
+    validate : bool, optional (default=False)
+        If True, validate each component for security (use only for user input)
+
+    Returns
+    -------
+    Path : The constructed path object
+
+    Raises
+    ------
+    PathSecurityError : If validation is enabled and a component fails validation
+    """
+    if not args:
+        return Path()
+
+    if validate:
+        validated_args = []
+        for arg in args:
+            if arg is not None:
+                # Validate each component
+                validated_arg = validate_path_component(arg)
+                validated_args.append(validated_arg)
+            else:
+                validated_args.append(arg)
+        return Path(*validated_args)
+
     return Path(*args)
 
 
@@ -157,14 +328,62 @@ def get_path(*args):
 
 
 def set_path(path):
+    """Set the base path for PyStore data storage.
+
+    This function validates and sets the base directory for all PyStore operations.
+    It ensures the path is a valid local filesystem path and creates it if needed.
+
+    Parameters
+    ----------
+    path : str or Path
+        The base path for PyStore storage
+
+    Returns
+    -------
+    Path : The configured storage path
+
+    Raises
+    ------
+    PathSecurityError : If the path is invalid or points to non-local storage
+    """
     if path is None:
         path = get_path()
-
     else:
-        path = path.rstrip("/").rstrip("\\").rstrip(" ")
-        if "://" in path and "file://" not in path:
+        # Sanitize the path
+        if isinstance(path, Path):
+            path_str = str(path)
+        elif isinstance(path, str):
+            path_str = path
+        else:
+            raise PathSecurityError(
+                f"Path must be str or Path, got {type(path)}"
+            )
+
+        # Check for null bytes
+        if '\x00' in path_str or '\0' in path_str:
+            raise PathSecurityError("Path contains null bytes")
+
+        # Strip whitespace and trailing separators
+        path_str = path_str.strip().rstrip("/").rstrip("\\")
+
+        # Check for remote storage schemes
+        if "://" in path_str and "file://" not in path_str:
             raise ValueError(
                 "PyStore currently only works with local file system")
+
+        # Remove file:// prefix if present
+        if path_str.startswith("file://"):
+            path_str = path_str[7:]
+
+        # Validate the path doesn't contain dangerous patterns
+        # We allow absolute paths for the base storage path
+        path = Path(path_str)
+
+        # Check for path traversal in the base path itself
+        if '..' in path_str:
+            raise PathSecurityError(
+                "Base storage path cannot contain '..' traversal sequences"
+            )
 
     config.DEFAULT_PATH = path
     path = get_path()
