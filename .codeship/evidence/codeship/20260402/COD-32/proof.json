@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "appName": "codeship",
+  "run": "COD-32",
+  "createdAt": "2026-04-02T12:51:38.134Z",
+  "entries": [
+    {
+      "timestamp": "2026-04-02T12:51:57.825Z",
+      "mode": "terminal",
+      "label": "tests",
+      "command": "pytest tests/ -v",
+      "duration": 185.00000000000006,
+      "artifact": "tests-135138.mp4",
+      "description": "Test run for COD-32"
+    }
+  ]
+}
