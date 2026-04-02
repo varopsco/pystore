@@ -39,7 +39,7 @@ class TestDataValidation:
         self.test_dir = tempfile.mkdtemp()
         pystore.set_path(self.test_dir)
 
-        # Create a store and collection with pyarrow engine (fastparquet not supported)
+        # Create a store and collection with pyarrow engine (default)
         self.store = pystore.store('test_store', engine='pyarrow')
         self.collection = self.store.collection('test_collection')
 

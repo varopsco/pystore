@@ -1,6 +1,11 @@
 Change Log
 ===========
 
+0.1.23
+------
+- Switched parquet engine from fastparquet to pyarrow (default engine)
+- Removed legacy numba shim from __init__.py (no longer needed)
+
 0.1.22
 ------
 - Uses `PYSTORE_PATH` environment variable, if it exists, as the path when not calling `store.set_path()` (defaults to `~/pystore`)
@@ -46,7 +51,7 @@ Change Log
 - `collection.reload_items` defaults to `False`
 - Default `npartitions` and `chunksize` are better optimized (~99MB/partition)
 - `collection.apply()` repartitions the dataframe based on new data size (~99MB/partition)
-- Option to specify the default engine for the store by specifying `engine="fastparquet"` or `engine="pyarrow"` (dafaults to `fastparquet`)
+- Option to specify the default engine for the store by specifying `engine="pyarrow"` or `engine="fastparquet"` (defaults to `pyarrow`)
 - Solving `fastparquet`/`numba` issues when using Dask >= 2.2.0 by importing `numba` in `__init__.py`
 
 0.1.12
