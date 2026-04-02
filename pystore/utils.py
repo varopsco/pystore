@@ -402,7 +402,10 @@ def list_stores():
 
 
 def delete_store(store):
-    shutil.rmtree(get_path(store))
+    validated_store = validate_path_component(store)
+    store_path = get_path(validated_store)
+    validate_path_within_directory(store_path, get_path())
+    shutil.rmtree(store_path)
     return True
 
 

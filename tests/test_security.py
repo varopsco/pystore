@@ -286,6 +286,22 @@ class TestStoreSecurity:
             with pytest.raises((PathSecurityError, ValueError)) as exc_info:
                 store.collection(name)
 
+    def test_delete_store_path_traversal_rejected(self):
+        """Test that delete_store cannot delete paths outside the store root."""
+        outside_dir = os.path.join(
+            os.path.dirname(self.test_dir),
+            'outside_' + os.path.basename(self.test_dir)
+        )
+        os.makedirs(outside_dir, exist_ok=True)
+
+        try:
+            with pytest.raises((PathSecurityError, ValueError)):
+                pystore.delete_store('../' + os.path.basename(outside_dir))
+            assert os.path.isdir(outside_dir)
+        finally:
+            if os.path.exists(outside_dir):
+                shutil.rmtree(outside_dir)
+
 
 class TestCollectionSecurity:
     """Test security at the collection level."""
@@ -347,7 +363,7 @@ class TestCollectionSecurity:
                 self.collection.delete_item(name)
 
     def test_malicious_snapshot_name_rejected(self):
-        """Test that malicious snapshot names are rejected or sanitized."""
+        """Test that malicious snapshot names are rejected."""
         # First write some data
         data = self._create_sample_data()
         self.collection.write('test_item', data)
@@ -360,10 +376,6 @@ class TestCollectionSecurity:
         with pytest.raises((PathSecurityError, ValueError)):
             self.collection.create_snapshot('$$$')
 
-        # Note: Names with only dangerous chars like $ that get sanitized are
-        # handled by the sanitization - 'snap$name' becomes 'snapname'
-        # This is intentional behavior - the sanitization removes dangerous chars
-
     def test_cannot_escape_datastore_via_item_name(self):
         """Test that we cannot escape the datastore via item name."""
         # This is the critical security test
@@ -371,8 +383,8 @@ class TestCollectionSecurity:
         with pytest.raises((PathSecurityError, ValueError)):
             self.collection.write('../../../escaped', self._create_sample_data())
 
-    def test_snapshot_sanitization(self):
-        """Test that snapshot names are properly sanitized."""
+    def test_snapshot_valid_names(self):
+        """Test that valid snapshot names are preserved and usable."""
         data = self._create_sample_data()
         self.collection.write('test_item', data)
 
@@ -380,10 +392,32 @@ class TestCollectionSecurity:
         self.collection.create_snapshot('valid_snapshot')
         assert 'valid_snapshot' in self.collection.list_snapshots()
 
-        # Names with invalid characters should be sanitized
-        # (only alphanumeric, dots, underscores allowed)
+        # Dots/underscores/numbers should work
         self.collection.create_snapshot('valid.name_123')
         assert 'valid.name_123' in self.collection.list_snapshots()
+
+    def test_snapshot_name_round_trip_with_hyphen(self):
+        """Test snapshot names are not silently rewritten."""
+        data = self._create_sample_data()
+        self.collection.write('test_item', data)
+
+        self.collection.create_snapshot('snap-1')
+        assert 'snap-1' in self.collection.list_snapshots()
+
+        item = self.collection.item('test_item', snapshot='snap-1')
+        assert len(item.to_pandas()) == 3
+
+    def test_snapshot_names_do_not_collide(self):
+        """Test distinct snapshot names remain distinct."""
+        data = self._create_sample_data()
+        self.collection.write('test_item', data)
+
+        self.collection.create_snapshot('snap1')
+        self.collection.create_snapshot('snap-1')
+
+        snapshots = self.collection.list_snapshots()
+        assert 'snap1' in snapshots
+        assert 'snap-1' in snapshots
 
     def test_path_traversal_in_rename_rejected(self):
         """Test that path traversal in rename is rejected."""

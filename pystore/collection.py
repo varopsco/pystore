@@ -525,23 +525,13 @@ class Collection(object):
         PathSecurityError : If snapshot name contains invalid characters
         """
         if snapshot:
-            # Sanitize and validate snapshot name
-            # Only allow alphanumeric, dots, and underscores
-            sanitized = "".join(
-                e for e in snapshot if e.isalnum() or e in [".", "_"])
-
-            # Validate the sanitized name
+            # Validate snapshot name without mutating it.
+            # This preserves round-trip behavior and prevents name collisions.
             try:
-                snapshot = utils.validate_path_component(sanitized)
+                snapshot = utils.validate_path_component(snapshot)
             except utils.PathSecurityError as e:
                 raise ValueError(
                     f"Invalid snapshot name '{snapshot}': {e}"
-                )
-
-            # Ensure snapshot name isn't empty after sanitization
-            if not snapshot:
-                raise ValueError(
-                    f"Snapshot name '{snapshot}' contains no valid characters"
                 )
         else:
             snapshot = str(int(time.time() * 1000000))
