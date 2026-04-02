@@ -21,6 +21,7 @@
 import os
 import shutil
 import tempfile
+import time
 import pytest
 import logging
 import pandas as pd
@@ -534,6 +535,89 @@ class TestLogging:
         collection_logs = [r for r in caplog.records 
                          if "test_collection" in r.message]
         assert len(collection_logs) >= 2
+
+
+class TestThreadedWrite:
+    """Test threaded write and append behavior."""
+
+    @pytest.fixture(autouse=True)
+    def setup(self):
+        """Set up test environment."""
+        self.test_dir = tempfile.mkdtemp()
+        pystore.set_path(self.test_dir)
+
+        self.store = pystore.store('test_store', engine='pyarrow')
+        self.collection = self.store.collection('test_collection')
+
+        yield
+
+        pystore.delete_stores()
+        if os.path.exists(self.test_dir):
+            shutil.rmtree(self.test_dir)
+
+    def _create_sample_data(self, values, index=None):
+        """Create simple sample DataFrame for tests."""
+        df = pd.DataFrame({'a': values, 'b': [float(v) for v in values]})
+        if index is not None:
+            df.index = index
+        return df
+
+    def _wait_until(self, predicate, timeout=5.0, interval=0.05):
+        """Wait for predicate to become true."""
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            try:
+                if predicate():
+                    return True
+            except Exception:
+                # Transient read errors can happen while background write is in progress.
+                pass
+            time.sleep(interval)
+        return False
+
+    def test_write_threaded_returns_future_and_writes_data(self):
+        """write_threaded should return a Future handle and complete write."""
+        data = self._create_sample_data([1, 2, 3])
+
+        future = self.collection.write_threaded('item1', data)
+
+        assert hasattr(future, 'result')
+        future.result(timeout=5)
+
+        item = self.collection.item('item1')
+        result = item.to_pandas()
+        assert len(result) == 3
+
+    def test_write_threaded_exposes_background_errors_via_future(self):
+        """write_threaded should expose write failures through the returned handle."""
+        data = self._create_sample_data([1, 2, 3])
+        self.collection.write('item1', data)
+
+        future = self.collection.write_threaded('item1', data, overwrite=False)
+
+        with pytest.raises(ValueError):
+            future.result(timeout=5)
+
+    def test_append_threaded_writes_and_reloads_items(self):
+        """append(threaded=True) should write in background and refresh items."""
+        initial = self._create_sample_data([1, 2, 3], index=pd.Index([0, 1, 2]))
+        self.collection.write('item1', initial)
+        self.collection.write('item2', initial)
+
+        # Simulate stale in-memory cache that is missing one item
+        self.collection.items = {'item1'}
+
+        new_data = self._create_sample_data([4, 5, 6], index=pd.Index([100, 101, 102]))
+        self.collection.append('item1', new_data, threaded=True, reload_items=True)
+
+        assert self._wait_until(
+            lambda: len(self.collection.item('item1').to_pandas()) == 6
+        ), "Timed out waiting for threaded append to complete"
+
+        assert self._wait_until(
+            lambda: self.collection.items == self.collection.list_items()
+        ), "Timed out waiting for reload_items to refresh collection.items"
+        assert 'item2' in self.collection.items
 
 
 class TestRenameItem:

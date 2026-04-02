@@ -25,7 +25,7 @@ import logging
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 import dask.dataframe as dd
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 import pandas as pd
 
 from . import utils
@@ -159,11 +159,11 @@ class Collection(object):
                        metadata: Optional[Dict[str, Any]] = None,
                        npartitions: Optional[int] = None, chunksize: Optional[int] = None,
                        overwrite: bool = False, epochdate: bool = False,
-                       reload_items: bool = False, **kwargs: Any) -> None:
+                       reload_items: bool = False, **kwargs: Any) -> Future:
         """Write data in a background thread."""
-        _executor.submit(self.write, item, data, metadata,
-                         npartitions, chunksize, overwrite,
-                         epochdate, reload_items, **kwargs)
+        return _executor.submit(self.write, item, data, metadata,
+                                npartitions, chunksize, overwrite,
+                                epochdate, reload_items, **kwargs)
 
     def write(self, item: str, data: Union[pd.DataFrame, dd.DataFrame, Item], 
               metadata: Optional[Dict[str, Any]] = None,
