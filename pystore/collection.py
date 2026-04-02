@@ -18,57 +18,108 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""PyStore Collection module for managing data items."""
+
 import os
 import time
 import shutil
 import logging
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 import dask.dataframe as dd
 import multitasking
+import pandas as pd
 
 from . import utils
 from .item import Item
 from . import config
+from .utils import Path
 
 
 logger = logging.getLogger('pystore')
 
 
-class Collection(object):
-    def __repr__(self):
+class Collection:
+    """Represents a collection of items in a PyStore datastore.
+
+    A collection is a namespace for storing related items (e.g., symbols).
+    It provides methods to write, read, append, and manage data items.
+
+    Attributes:
+        engine: Parquet engine to use
+        datastore: Path to the datastore
+        collection: Name of the collection
+        items: Set of item names in the collection
+        snapshots: Set of snapshot names
+    """
+
+    def __repr__(self) -> str:
+        """Return string representation of the Collection."""
         return "PyStore.collection <%s>" % self.collection
 
-    def __init__(self, collection, datastore, engine="fastparquet"):
-        self.engine = engine
-        self.datastore = datastore
-        self.collection = collection
-        self.items = self.list_items()
-        self.snapshots = self.list_snapshots()
+    def __init__(self, collection: str, datastore: str, engine: str = "fastparquet") -> None:
+        """Initialize a Collection instance.
 
-    def _item_path(self, item, as_string=False):
+        Args:
+            collection: Name of the collection
+            datastore: Path to the datastore
+            engine: Parquet engine to use (default: fastparquet)
+        """
+        self.engine: str = engine
+        self.datastore: str = datastore
+        self.collection: str = collection
+        self.items: Set[str] = self.list_items()
+        self.snapshots: Set[str] = self.list_snapshots()
+
+    def _item_path(self, item: str, as_string: bool = False) -> Union[Path, str]:
+        """Get the path to an item.
+
+        Args:
+            item: Name of the item
+            as_string: If True, return path as string
+
+        Returns:
+            Path object or string to the item
+        """
         p = utils.make_path(self.datastore, self.collection, item)
         if as_string:
             return str(p)
         return p
 
     @multitasking.task
-    def _list_items_threaded(self, **kwargs):
+    def _list_items_threaded(self, **kwargs: Any) -> None:
+        """Update items list in a background thread.
+
+        Args:
+            **kwargs: Filter arguments for list_items
+        """
         self.items = self.list_items(**kwargs)
 
-    def list_items(self, **kwargs):
+    def list_items(self, **kwargs: Any) -> Set[str]:
+        """List items in the collection, optionally filtered by metadata.
+
+        Args:
+            **kwargs: Metadata key-value pairs to filter by
+
+        Returns:
+            Set of item names matching the filter (or all items if no filter)
+        """
         dirs = utils.subdirs(utils.make_path(self.datastore, self.collection))
         if not kwargs:
             return set(dirs)
 
-        matched = []
+        matched: List[str] = []
         for d in dirs:
             meta = utils.read_metadata(utils.make_path(
                 self.datastore, self.collection, d))
-            del meta["_updated"]
+            if meta is None:
+                continue
+            meta_copy = meta.copy()
+            del meta_copy["_updated"]
 
             m = 0
-            keys = list(meta.keys())
+            keys = list(meta_copy.keys())
             for k, v in kwargs.items():
-                if k in keys and meta[k] == v:
+                if k in keys and meta_copy[k] == v:
                     m += 1
 
             if m == len(kwargs):
@@ -76,11 +127,37 @@ class Collection(object):
 
         return set(matched)
 
-    def item(self, item, snapshot=None, filters=None, columns=None):
+    def item(
+        self,
+        item: str,
+        snapshot: Optional[str] = None,
+        filters: Optional[List[tuple]] = None,
+        columns: Optional[List[str]] = None
+    ) -> Item:
+        """Get an item from the collection.
+
+        Args:
+            item: Name of the item
+            snapshot: Optional snapshot name to read from
+            filters: Optional filters to apply when reading
+            columns: Optional list of columns to read
+
+        Returns:
+            Item instance
+        """
         return Item(item, self.datastore, self.collection,
                     snapshot, filters, columns, engine=self.engine)
 
-    def index(self, item, last=False):
+    def index(self, item: str, last: bool = False) -> Union[pd.Index, float]:
+        """Get the index of an item.
+
+        Args:
+            item: Name of the item
+            last: If True, return only the last index value as float
+
+        Returns:
+            Pandas Index or last value as float
+        """
         data = dd.read_parquet(self._item_path(item, as_string=True),
                                columns="index", engine=self.engine)
         if not last:
@@ -89,16 +166,25 @@ class Collection(object):
         return float(str(data.index).split(
                      "\nName")[0].split("\n")[-1].split(" ")[0])
 
-    def delete_item(self, item, reload_items=False):
+    def delete_item(self, item: str, reload_items: bool = False) -> bool:
+        """Delete an item from the collection.
+
+        Args:
+            item: Name of the item to delete
+            reload_items: If True, reload the items list after deletion
+
+        Returns:
+            True on success
+        """
         logger.info(f"Deleting item '{item}' from collection '{self.collection}'")
         shutil.rmtree(self._item_path(item))
-        self.items.remove(item)
+        self.items.discard(item)
         if reload_items:
-            self.items = self._list_items_threaded()
+            self._list_items_threaded()
         logger.info(f"Successfully deleted item '{item}' from collection '{self.collection}'")
         return True
 
-    def rename_item(self, old_item, new_item, reload_items=False):
+    def rename_item(self, old_item: str, new_item: str, reload_items: bool = False) -> bool:
         """Rename an item in the collection.
 
         Parameters
@@ -144,26 +230,73 @@ class Collection(object):
         return True
 
     @multitasking.task
-    def write_threaded(self, item, data, metadata={},
-                       npartitions=None, chunksize=None,
-                       overwrite=False, epochdate=False,
-                       reload_items=False, **kwargs):
-        return self.write(item, data, metadata,
-                          npartitions, chunksize, overwrite,
-                          epochdate, reload_items,
-                          **kwargs)
+    def write_threaded(
+        self,
+        item: str,
+        data: Union[pd.DataFrame, dd.DataFrame, Item],
+        metadata: Optional[Dict[str, Any]] = None,
+        npartitions: Optional[int] = None,
+        chunksize: Optional[int] = None,
+        overwrite: bool = False,
+        epochdate: bool = False,
+        reload_items: bool = False,
+        **kwargs: Any
+    ) -> None:
+        """Write data to an item in a background thread.
 
-    def write(self, item, data, metadata={},
-              npartitions=None, chunksize=None, overwrite=False,
-              epochdate=False, reload_items=False,
-              **kwargs):
+        Args:
+            item: Name of the item
+            data: Data to write (Pandas or Dask DataFrame or Item)
+            metadata: Optional metadata dictionary
+            npartitions: Optional number of partitions
+            chunksize: Optional chunk size
+            overwrite: If True, overwrite existing item
+            epochdate: If True, convert datetime index to epoch
+            reload_items: If True, reload items list after write
+            **kwargs: Additional arguments passed to dd.to_parquet
+        """
+        self.write(item, data, metadata,
+                   npartitions, chunksize, overwrite,
+                   epochdate, reload_items,
+                   **kwargs)
+
+    def write(
+        self,
+        item: str,
+        data: Union[pd.DataFrame, dd.DataFrame, Item],
+        metadata: Optional[Dict[str, Any]] = None,
+        npartitions: Optional[int] = None,
+        chunksize: Optional[int] = None,
+        overwrite: bool = False,
+        epochdate: bool = False,
+        reload_items: bool = False,
+        **kwargs: Any
+    ) -> None:
+        """Write data to an item in the collection.
+
+        Args:
+            item: Name of the item
+            data: Data to write (Pandas or Dask DataFrame or Item)
+            metadata: Optional metadata dictionary
+            npartitions: Optional number of partitions
+            chunksize: Optional chunk size
+            overwrite: If True, overwrite existing item
+            epochdate: If True, convert datetime index to epoch
+            reload_items: If True, reload items list after write
+            **kwargs: Additional arguments passed to dd.to_parquet
+
+        Raises:
+            ValueError: If item exists and overwrite is False
+        """
+        if metadata is None:
+            metadata = {}
 
         logger.info(f"Writing item '{item}' to collection '{self.collection}'")
 
         if utils.path_exists(self._item_path(item)) and not overwrite:
-            raise ValueError("""
-                Item already exists. To overwrite, use `overwrite=True`.
-                Otherwise, use `<collection>.append()`""")
+            raise ValueError(
+                "Item already exists. To overwrite, use `overwrite=True`. "
+                "Otherwise, use `<collection>.append()`")
 
         if isinstance(data, Item):
             data = data.to_pandas()
@@ -173,8 +306,14 @@ class Collection(object):
 
         if epochdate or "datetime" in str(data.index.dtype):
             data = utils.datetime_to_int64(data)
-            if 1 in data.index.nanosecond and "times" not in kwargs:
-                kwargs["times"] = "int96"
+            # Check if index has nanosecond attribute (DatetimeIndex)
+            if hasattr(data.index, 'nanosecond'):
+                nanoseconds = data.index.nanosecond
+                if hasattr(nanoseconds, 'any'):
+                    if nanoseconds.any() and "times" not in kwargs:
+                        kwargs["times"] = "int96"
+                elif any(nanoseconds) and "times" not in kwargs:
+                    kwargs["times"] = "int96"
 
         if data.index.name == "":
             data.index.name = "index"
@@ -203,15 +342,21 @@ class Collection(object):
 
         logger.info(f"Successfully wrote item '{item}' to collection '{self.collection}'")
 
-    def _get_item_schema(self, item):
+    def _get_item_schema(self, item: str) -> Dict[str, Any]:
         """Extract schema from existing item.
 
         Returns a dictionary containing column names, dtypes, and index type.
+
+        Args:
+            item: Name of the item
+
+        Returns:
+            Dictionary with 'columns', 'dtypes', 'index_name', 'index_type'
         """
         item_path = self._item_path(item, as_string=True)
         # Read metadata only (not full data) to get schema
         ddf = dd.read_parquet(item_path, engine=self.engine)
-        schema = {
+        schema: Dict[str, Any] = {
             'columns': list(ddf.columns),
             'dtypes': ddf.dtypes.to_dict(),
             'index_name': ddf.index.name,
@@ -219,9 +364,13 @@ class Collection(object):
         }
         return schema
 
-    def _validate_data_compatibility(self, new_data, existing_schema,
-                                     strictness='strict',
-                                     allow_extra_columns=False):
+    def _validate_data_compatibility(
+        self,
+        new_data: pd.DataFrame,
+        existing_schema: Dict[str, Any],
+        strictness: str = 'strict',
+        allow_extra_columns: bool = False
+    ) -> Tuple[bool, List[str]]:
         """Validate that new data is compatible with existing data schema.
 
         Parameters
@@ -246,9 +395,9 @@ class Collection(object):
         if strictness == 'disabled':
             return True, []
 
-        errors = []
-        existing_columns = set(existing_schema['columns'])
-        new_columns = set(new_data.columns)
+        errors: List[str] = []
+        existing_columns: Set[str] = set(existing_schema['columns'])
+        new_columns: Set[str] = set(new_data.columns)
 
         # Check for missing columns (columns in existing but not in new)
         missing_columns = existing_columns - new_columns
@@ -298,7 +447,7 @@ class Collection(object):
 
         return True, []
 
-    def _are_dtypes_compatible(self, existing_dtype, new_dtype):
+    def _are_dtypes_compatible(self, existing_dtype: Any, new_dtype: Any) -> bool:
         """Check if two pandas dtypes are compatible.
 
         Parameters
@@ -312,8 +461,6 @@ class Collection(object):
         -------
         bool : True if compatible, False otherwise
         """
-        import pandas as pd
-
         # Use pandas API for dtype comparison
         if pd.api.types.is_dtype_equal(existing_dtype, new_dtype):
             return True
@@ -339,10 +486,20 @@ class Collection(object):
         )
         return existing_is_string == new_is_string
 
-    def append(self, item, data, npartitions=None, epochdate=False,
-               threaded=False, reload_items=False, remove_duplicates=None,
-               validate_schema=False, schema_strictness='strict',
-               allow_extra_columns=False, **kwargs):
+    def append(
+        self,
+        item: str,
+        data: Union[pd.DataFrame, dd.DataFrame],
+        npartitions: Optional[int] = None,
+        epochdate: bool = False,
+        threaded: bool = False,
+        reload_items: bool = False,
+        remove_duplicates: Optional[str] = None,
+        validate_schema: bool = False,
+        schema_strictness: str = 'strict',
+        allow_extra_columns: bool = False,
+        **kwargs: Any
+    ) -> None:
         """Append new data to the collection.
 
         Saves new data to the collection and optionially removes duplicates
@@ -350,12 +507,18 @@ class Collection(object):
 
         Parameters
         ----------
-        item
-        data
-        npartitions
-        epochdate
-        threaded
-        reload_items
+        item : str
+            Name of the item
+        data : pandas.DataFrame or dask.DataFrame
+            Data to append
+        npartitions : int, optional
+            Number of partitions for the combined data
+        epochdate : bool, optional (default=False)
+            If True, convert datetime index to epoch
+        threaded : bool, optional (default=False)
+            If True, write in a background thread
+        reload_items : bool, optional (default=False)
+            If True, reload items list after append
         remove_duplicates : str, optional (default=None)
             Defines how duplicates within the combined dataframe will be
                 handled.
@@ -384,19 +547,18 @@ class Collection(object):
         allow_extra_columns : bool, optional (default=False)
             When True, allows appended data to have columns not present in
             existing data. Only relevant when validate_schema=True.
-
-        kwargs
+        **kwargs
+            Additional arguments passed to write
 
         Returns
         -------
-
+        None
         """
-
         logger.info(f"Appending data to item '{item}' in collection '{self.collection}'")
 
         if not utils.path_exists(self._item_path(item)):
             raise ValueError(
-                """Item do not exists. Use `<collection>.write(...)`""")
+                "Item does not exist. Use `<collection>.write(...)`")
 
         # work on copy
         data = data.copy()
@@ -413,8 +575,17 @@ class Collection(object):
                 )
 
         try:
-            if epochdate or ("datetime" in str(data.index.dtype) and
-                             any(data.index.nanosecond) > 0):
+            should_convert = epochdate
+            if not should_convert and "datetime" in str(data.index.dtype):
+                # Check if index has nanosecond attribute (DatetimeIndex)
+                if hasattr(data.index, 'nanosecond'):
+                    nanoseconds = data.index.nanosecond
+                    if hasattr(nanoseconds, 'any'):
+                        should_convert = nanoseconds.any()
+                    else:
+                        should_convert = any(nanoseconds)
+            
+            if should_convert:
                 data = utils.datetime_to_int64(data)
             old_index = dd.read_parquet(self._item_path(item, as_string=True),
                                         columns=[], engine=self.engine
@@ -433,7 +604,7 @@ class Collection(object):
         current = self.item(item)
         new = dd.from_pandas(data, npartitions=1)
 
-        # combine old dataframe with new and optionally remove duplicates from 
+        # combine old dataframe with new and optionally remove duplicates from
         # combined dataframe
         idx_name = data.index.name
         if remove_duplicates is None:
@@ -459,9 +630,9 @@ class Collection(object):
                 .set_index(idx_name)
         else:
             raise ValueError(
-                """argument remove_duplicates must either be None, 'index', 
-                'values', 'all' or 'values_in_index'""")     
-        
+                "argument remove_duplicates must either be None, 'index', "
+                "'values', 'all' or 'values_in_index'")
+
         if npartitions is None:
             memusage = combined.memory_usage(deep=True).sum()
             if isinstance(combined, dd.DataFrame):
@@ -476,7 +647,15 @@ class Collection(object):
 
         logger.info(f"Successfully appended data to item '{item}' in collection '{self.collection}'")
 
-    def create_snapshot(self, snapshot=None):
+    def create_snapshot(self, snapshot: Optional[str] = None) -> bool:
+        """Create a snapshot of the current collection state.
+
+        Args:
+            snapshot: Optional name for the snapshot. If None, uses timestamp.
+
+        Returns:
+            True on success
+        """
         if snapshot:
             snapshot = "".join(
                 e for e in snapshot if e.isalnum() or e in [".", "_"])
@@ -492,12 +671,25 @@ class Collection(object):
         self.snapshots = self.list_snapshots()
         return True
 
-    def list_snapshots(self):
+    def list_snapshots(self) -> Set[str]:
+        """List all snapshots in the collection.
+
+        Returns:
+            Set of snapshot names
+        """
         snapshots = utils.subdirs(utils.make_path(
             self.datastore, self.collection, "_snapshots"))
         return set(snapshots)
 
-    def delete_snapshot(self, snapshot):
+    def delete_snapshot(self, snapshot: str) -> bool:
+        """Delete a snapshot from the collection.
+
+        Args:
+            snapshot: Name of the snapshot to delete
+
+        Returns:
+            True on success
+        """
         if snapshot not in self.snapshots:
             # raise ValueError("Snapshot `%s` doesn't exist" % snapshot)
             return True
@@ -507,7 +699,12 @@ class Collection(object):
         self.snapshots = self.list_snapshots()
         return True
 
-    def delete_snapshots(self):
+    def delete_snapshots(self) -> bool:
+        """Delete all snapshots from the collection.
+
+        Returns:
+            True on success
+        """
         snapshots_path = utils.make_path(
             self.datastore, self.collection, "_snapshots")
         shutil.rmtree(snapshots_path)

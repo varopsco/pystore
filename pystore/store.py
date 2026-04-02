@@ -18,28 +18,50 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""PyStore Store module for managing datastore operations."""
+
 import os
 import shutil
+from typing import List, Optional, Set
 
 from . import utils
 from .collection import Collection
+from .item import Item
+from .utils import Path
 
 
-class store(object):
-    def __repr__(self):
+class Store:
+    """Represents a PyStore datastore.
+
+    A datastore is a container for collections, which in turn contain items.
+    This class provides methods to create, access, and manage collections.
+
+    Attributes:
+        datastore: Path to the datastore directory
+        engine: Parquet engine to use (fastparquet or pyarrow)
+        collections: Set of collection names in the datastore
+    """
+
+    def __repr__(self) -> str:
+        """Return string representation of the store."""
         return "PyStore.datastore <%s>" % self.datastore
 
-    def __init__(self, datastore, engine="fastparquet"):
+    def __init__(self, datastore: str, engine: str = "fastparquet") -> None:
+        """Initialize a store instance.
 
-        datastore_path = utils.get_path()
+        Args:
+            datastore: Name of the datastore
+            engine: Parquet engine to use (default: fastparquet)
+        """
+        datastore_path: Path = utils.get_path()
         if not utils.path_exists(datastore_path):
             os.makedirs(datastore_path)
 
-        self.datastore = utils.make_path(datastore_path, datastore)
+        self.datastore: Path = utils.make_path(datastore_path, datastore)
         if not utils.path_exists(self.datastore):
             os.makedirs(self.datastore)
             utils.write_metadata(self.datastore, {"engine": engine})
-            self.engine = engine
+            self.engine: str = engine
         else:
             metadata = utils.read_metadata(self.datastore)
             if metadata:
@@ -49,11 +71,23 @@ class store(object):
                 self.engine = "fastparquet"
                 utils.write_metadata(self.datastore, {"engine": self.engine})
 
-        self.collections = self.list_collections()
+        self.collections: Set[str] = self.list_collections()
 
-    def _create_collection(self, collection, overwrite=False):
+    def _create_collection(self, collection: str, overwrite: bool = False) -> Collection:
+        """Create a new collection in the datastore.
+
+        Args:
+            collection: Name of the collection to create
+            overwrite: If True, overwrite existing collection
+
+        Returns:
+            Collection instance for the created collection
+
+        Raises:
+            ValueError: If collection exists and overwrite is False
+        """
         # create collection (subdir)
-        collection_path = utils.make_path(self.datastore, collection)
+        collection_path: Path = utils.make_path(self.datastore, collection)
         if utils.path_exists(collection_path):
             if overwrite:
                 self.delete_collection(collection)
@@ -68,9 +102,17 @@ class store(object):
         self.collections = self.list_collections()
 
         # return the collection
-        return Collection(collection, self.datastore)
+        return Collection(collection, str(self.datastore), self.engine)
 
-    def delete_collection(self, collection):
+    def delete_collection(self, collection: str) -> bool:
+        """Delete a collection from the datastore.
+
+        Args:
+            collection: Name of the collection to delete
+
+        Returns:
+            True on success
+        """
         # delete collection (subdir)
         shutil.rmtree(utils.make_path(self.datastore, collection))
 
@@ -78,18 +120,47 @@ class store(object):
         self.collections = self.list_collections()
         return True
 
-    def list_collections(self):
-        # lists collections (subdirs)
-        return utils.subdirs(self.datastore)
+    def list_collections(self) -> Set[str]:
+        """List all collections in the datastore.
 
-    def collection(self, collection, overwrite=False):
+        Returns:
+            Set of collection names
+        """
+        # lists collections (subdirs)
+        return set(utils.subdirs(self.datastore))
+
+    def collection(self, collection: str, overwrite: bool = False) -> Collection:
+        """Get or create a collection.
+
+        Args:
+            collection: Name of the collection
+            overwrite: If True, overwrite existing collection
+
+        Returns:
+            Collection instance
+        """
         if collection in self.collections and not overwrite:
-            return Collection(collection, self.datastore, self.engine)
+            return Collection(collection, str(self.datastore), self.engine)
 
         # create it
         self._create_collection(collection, overwrite)
-        return Collection(collection, self.datastore, self.engine)
+        return Collection(collection, str(self.datastore), self.engine)
 
-    def item(self, collection, item):
+    def item(self, collection: str, item: str) -> Item:
+        """Get an item from a collection.
+
+        This bypasses the collection object and directly accesses the item.
+
+        Args:
+            collection: Name of the collection
+            item: Name of the item
+
+        Returns:
+            Item instance
+        """
         # bypasses collection
         return self.collection(collection).item(item)
+
+
+# Backward compatibility alias (PEP8 recommends CapWords for class names)
+store = Store

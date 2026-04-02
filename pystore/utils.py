@@ -21,6 +21,7 @@
 import os
 import logging
 from datetime import datetime
+from typing import Any, Dict, List, Optional, Set, Union
 import json
 import shutil
 import pandas as pd
@@ -33,7 +34,7 @@ try:
     from pathlib import Path
     Path().expanduser()
 except (ImportError, AttributeError):
-    from pathlib2 import Path
+    from pathlib2 import Path  # type: ignore
 
 from . import config
 
@@ -44,7 +45,7 @@ logger = logging.getLogger('pystore')
 logger.addHandler(logging.NullHandler())
 
 
-def configure_logging(level=logging.INFO, format_string=None):
+def configure_logging(level: int = logging.INFO, format_string: Optional[str] = None) -> None:
     """Configure logging for pystore.
     
     This function can be called at application startup to configure logging
@@ -71,12 +72,24 @@ def configure_logging(level=logging.INFO, format_string=None):
     logger.setLevel(level)
 
 
-def read_csv(urlpath, *args, **kwargs):
-    def rename_dask_index(df, name):
+def read_csv(urlpath: str, *args: Any, **kwargs: Any) -> dd.DataFrame:
+    """Read CSV file into a Dask DataFrame.
+
+    Args:
+        urlpath: Path or URL to the CSV file
+        *args: Additional positional arguments passed to dd.read_csv
+        **kwargs: Additional keyword arguments passed to dd.read_csv
+            Can include 'index_col' and 'index_name' for index handling
+
+    Returns:
+        Dask DataFrame with optional index configuration
+    """
+    def rename_dask_index(df: pd.DataFrame, name: str) -> pd.DataFrame:
         df.index.name = name
         return df
 
-    index_col = index_name = None
+    index_col: Optional[Union[str, List[str]]] = None
+    index_name: Optional[str] = None
 
     if "index" in kwargs:
         del kwargs["index"]
@@ -100,42 +113,91 @@ def read_csv(urlpath, *args, **kwargs):
     return df
 
 
-def datetime_to_int64(df):
-    """ convert datetime index to epoch int
-    allows for cross language/platform portability
-    """
+def datetime_to_int64(df: Union[pd.DataFrame, dd.DataFrame]) -> Union[pd.DataFrame, dd.DataFrame]:
+    """Convert datetime index to epoch int.
 
-    if isinstance(df.index, dd.Index) and (
-            isinstance(df.index, pd.DatetimeIndex) and
-            any(df.index.nanosecond) > 0):
-        df.index = df.index.astype(np.int64)  # / 1e9
+    Allows for cross language/platform portability.
+
+    Args:
+        df: DataFrame with datetime index
+
+    Returns:
+        DataFrame with datetime index converted to int64
+    """
+    # Check if the index is a DatetimeIndex with nanoseconds
+    if isinstance(df.index, pd.DatetimeIndex):
+        nanoseconds = df.index.nanosecond
+        # Use .any() method on numpy array instead of built-in any()
+        if hasattr(nanoseconds, 'any'):
+            if nanoseconds.any():
+                df.index = df.index.astype(np.int64)
+        elif any(nanoseconds):  # Fallback for non-numpy arrays
+            df.index = df.index.astype(np.int64)
 
     return df
 
 
-def subdirs(d):
-    """ use this to construct paths for future storage support """
+def subdirs(d: Union[str, Path]) -> List[str]:
+    """Get list of subdirectory names.
+
+    Use this to construct paths for future storage support.
+
+    Args:
+        d: Directory path
+
+    Returns:
+        List of subdirectory names (excluding _snapshots)
+    """
     return [o.parts[-1] for o in Path(d).iterdir()
             if o.is_dir() and o.parts[-1] != "_snapshots"]
 
 
-def path_exists(path):
-    """ use this to construct paths for future storage support """
-    return path.exists()
+def path_exists(path: Union[str, Path]) -> bool:
+    """Check if path exists.
+
+    Use this to construct paths for future storage support.
+
+    Args:
+        path: Path to check
+
+    Returns:
+        True if path exists, False otherwise
+    """
+    return Path(path).exists()
 
 
-def read_metadata(path):
-    """ use this to construct paths for future storage support """
+def read_metadata(path: Union[str, Path]) -> Optional[Dict[str, Any]]:
+    """Read metadata from JSON file.
+
+    Use this to construct paths for future storage support.
+
+    Args:
+        path: Directory path containing metadata.json
+
+    Returns:
+        Dictionary with metadata, or None if file doesn't exist
+    """
     dest = make_path(path, "metadata.json")
     if path_exists(dest):
         with dest.open() as f:
             metadata = json.load(f)
             logger.debug(f"Read metadata from {dest}")
             return metadata
+    return None
 
 
-def write_metadata(path, metadata={}):
-    """ use this to construct paths for future storage support """
+def write_metadata(path: Union[str, Path], metadata: Optional[Dict[str, Any]] = None) -> None:
+    """Write metadata to JSON file.
+
+    Use this to construct paths for future storage support.
+
+    Args:
+        path: Directory path to write metadata.json
+        metadata: Dictionary with metadata to write
+    """
+    if metadata is None:
+        metadata = {}
+    
     now = datetime.now()
     metadata["_updated"] = now.strftime("%Y-%m-%d %H:%I:%S.%f")
     meta_file = make_path(path, "metadata.json")
@@ -144,55 +206,110 @@ def write_metadata(path, metadata={}):
         logger.debug(f"Wrote metadata to {meta_file}")
 
 
-def make_path(*args):
-    """ use this to construct paths for future storage support """
-    # return Path(os.path.join(*args))
+def make_path(*args: Union[str, Path]) -> Path:
+    """Construct path from components.
+
+    Use this to construct paths for future storage support.
+
+    Args:
+        *args: Path components
+
+    Returns:
+        Path object constructed from components
+    """
+    # return Path(os.pathjoin(*args))
     return Path(*args)
 
 
-def get_path(*args):
-    """ use this to construct paths for future storage support """
+def get_path(*args: Union[str, Path]) -> Path:
+    """Get path relative to pystore root.
+
+    Use this to construct paths for future storage support.
+
+    Args:
+        *args: Path components relative to pystore root
+
+    Returns:
+        Path object relative to pystore root
+    """
     # return Path(os.path.join(config.DEFAULT_PATH, *args))
     return Path(config.DEFAULT_PATH, *args)
 
 
-def set_path(path):
-    if path is None:
-        path = get_path()
+def set_path(path: Optional[str]) -> Path:
+    """Set the pystore root path.
 
+    Args:
+        path: Path to use as pystore root. If None, uses default path.
+
+    Returns:
+        The current pystore root path
+
+    Raises:
+        ValueError: If path contains non-file:// URL scheme
+    """
+    path_str: str
+    if path is None:
+        path_str = str(get_path())
     else:
-        path = path.rstrip("/").rstrip("\\").rstrip(" ")
-        if "://" in path and "file://" not in path:
+        path_str = path.rstrip("/").rstrip("\\").rstrip(" ")
+        if "://" in path_str and "file://" not in path_str:
             raise ValueError(
                 "PyStore currently only works with local file system")
 
-    config.DEFAULT_PATH = path
-    path = get_path()
+    config.DEFAULT_PATH = path_str
+    result_path = get_path()
 
     # if path does not exist - create it
-    if not path_exists(get_path()):
-        os.makedirs(get_path())
+    if not path_exists(result_path):
+        os.makedirs(result_path)
 
-    return get_path()
+    return result_path
 
 
-def list_stores():
+def list_stores() -> List[str]:
+    """List all available stores.
+
+    Returns:
+        List of store names
+    """
     if not path_exists(get_path()):
         os.makedirs(get_path())
     return subdirs(get_path())
 
 
-def delete_store(store):
+def delete_store(store: str) -> bool:
+    """Delete a store.
+
+    Args:
+        store: Name of the store to delete
+
+    Returns:
+        True on success
+    """
     shutil.rmtree(get_path(store))
     return True
 
 
-def delete_stores():
+def delete_stores() -> bool:
+    """Delete all stores.
+
+    Returns:
+        True on success
+    """
     shutil.rmtree(get_path())
     return True
 
 
-def set_client(scheduler=None):
+def set_client(scheduler: Optional[str] = None) -> Optional[Client]:
+    """Set the Dask distributed client scheduler.
+
+    Args:
+        scheduler: Scheduler address or None for local
+
+    Returns:
+        The Dask Client instance, or None if no scheduler set
+    """
     if scheduler != config._SCHEDULER and config._CLIENT is not None:
         try:
             config._CLIENT.shutdown()
@@ -207,16 +324,34 @@ def set_client(scheduler=None):
     return config._CLIENT
 
 
-def get_client():
+def get_client() -> Optional[Client]:
+    """Get the current Dask distributed client.
+
+    Returns:
+        The Dask Client instance, or None if not set
+    """
     return config._CLIENT
 
 
-def set_partition_size(size=None):
+def set_partition_size(size: Optional[float] = None) -> float:
+    """Set the default partition size.
+
+    Args:
+        size: Partition size in bytes. If None, uses default.
+
+    Returns:
+        The current partition size
+    """
     if size is None:
         size = config.DEFAULT_PARTITION_SIZE * 1
     config.PARTITION_SIZE = size
     return config.PARTITION_SIZE
 
 
-def get_partition_size():
+def get_partition_size() -> float:
+    """Get the current partition size.
+
+    Returns:
+        The current partition size in bytes
+    """
     return config.PARTITION_SIZE

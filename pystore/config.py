@@ -18,13 +18,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""PyStore configuration module."""
+
 import os as os
+from typing import Optional, TYPE_CHECKING
+
 from .utils import Path
 
-DEFAULT_PATH = os.environ.get("PYSTORE_PATH", Path.home() / "pystore")
-DEFAULT_PARTITION_SIZE = 99e+6  # ~99MB
-PARTITION_SIZE = 99e+6  # ~99MB
+if TYPE_CHECKING:
+    from dask.distributed import Client
+
+DEFAULT_PATH: str = os.environ.get("PYSTORE_PATH", str(Path.home() / "pystore"))
+DEFAULT_PARTITION_SIZE: float = 99e+6  # ~99MB
+PARTITION_SIZE: float = 99e+6  # ~99MB
 
 # dask distributed
-_SCHEDULER = None
-_CLIENT = None
+_SCHEDULER: Optional[str] = None
+_CLIENT: Optional["Client"] = None
