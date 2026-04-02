@@ -20,7 +20,8 @@
 
 import codecs
 from os import path
-from setuptools import setup, find_packages
+
+from setuptools import find_packages, setup
 
 here = path.abspath(path.dirname(__file__))
 
@@ -49,17 +50,31 @@ setup(
         'Topic :: Software Development :: Libraries',
         'Topic :: Software Development :: Libraries :: Python Modules',
 
-        'Programming Language :: Python :: 2.7',
-        'Programming Language :: Python :: 3.5',
-        'Programming Language :: Python :: 3.6',
-        'Programming Language :: Python :: 3.7',
+        'Programming Language :: Python :: 3',
+        'Programming Language :: Python :: 3.9',
+        'Programming Language :: Python :: 3.10',
+        'Programming Language :: Python :: 3.11',
+        'Programming Language :: Python :: 3.12',
     ],
+    python_requires='>=3.9',
     platforms=['linux', 'unix', 'macOS'],
     keywords='dask, datastore, flatfile, pystore',
     packages=find_packages(exclude=['contrib', 'docs', 'tests', 'examples']),
-    install_requires=['python-snappy', 'multitasking', 'toolz', 'partd',
-                      'cloudpickle', 'distributed', 'pandas', 'numpy',
-                      'fastparquet', 'dask'],
+    install_requires=[
+        'python-snappy>=0.6.1',
+        'multitasking>=0.0.9',
+        'toolz>=0.12.0',
+        'partd>=1.4.0',
+        'cloudpickle>=2.2.0',
+        'distributed>=2023.1.0',
+        'pandas>=1.5.0',
+        'numpy>=1.23.0',
+        'fastparquet>=2023.7.0',
+        'dask>=2023.1.0',
+    ],
+    extras_require={
+        'pyarrow': ['pyarrow>=10.0.0'],
+    },
     entry_points={
         'console_scripts': [
             'pystore=pystore.__main__:main',

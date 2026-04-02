@@ -280,9 +280,10 @@ class TestDataValidation:
             schema_strictness='disabled'
         )
 
-        # Verify data was appended (though schema is incompatible in practice
-        # due to different columns, the validation step is skipped)
-        # Note: This test verifies that validation can be disabled
+        # Verify append succeeds when schema validation is disabled
+        result = self.collection.item('item1').to_pandas()
+        assert len(result) == 5
+        assert {'a', 'b', 'c', 'x', 'y', 'z'}.issubset(set(result.columns))
 
     def test_validation_error_messages(self):
         """Test that error messages are clear and informative."""
@@ -342,12 +343,23 @@ class TestDataValidation:
         data = self._create_sample_data()
         self.collection.write('item1', data)
 
-        new_data = self._create_sample_data()
-        new_data.index = pd.Index([4, 5, 6])
+        new_data = pd.DataFrame({
+            'x': [4, 5],
+            'y': [4.0, 5.0],
+            'z': ['p', 'q']
+        })
+        new_data.index = pd.Index([4, 5])
 
-        # Using invalid strictness value - it should work with validation disabled
-        # The validation method handles this by treating 'disabled' as default
-        # or we could add explicit validation for the parameter
+        # Invalid strictness currently behaves like a non-strict mode and
+        # should not block append.
+        self.collection.append(
+            'item1', new_data,
+            validate_schema=True,
+            schema_strictness='invalid'
+        )
+
+        result = self.collection.item('item1').to_pandas()
+        assert len(result) == 5
 
     def test_get_item_schema(self):
         """Test the _get_item_schema helper method."""
@@ -388,9 +400,8 @@ class TestDtypeCompatibility:
         # Same numeric type family (int to int)
         assert collection._are_dtypes_compatible('int32', 'int64')
 
-        # Different numeric type family (int to float) - should fail
-        # Actually, int to float is usually considered compatible in pandas
-        # but let's check our implementation handles this
+        # Different numeric type family (int to float) should fail
+        assert not collection._are_dtypes_compatible('int64', 'float64')
 
     def test_are_dtypes_compatible_string(self):
         """Test string dtype compatibility."""
