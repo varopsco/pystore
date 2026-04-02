@@ -177,7 +177,7 @@ class Collection(object):
             has_nanoseconds = (data.index.nanosecond > 0).any()
 
         if epochdate or "datetime" in str(data.index.dtype):
-            data = utils.datetime_to_int64(data)
+            data = utils.datetime_to_int64(data, force=epochdate)
             # The 'times' parameter is only supported by fastparquet engine
             if has_nanoseconds and self.engine == "fastparquet" and "times" not in kwargs:
                 kwargs["times"] = "int96"
@@ -424,7 +424,7 @@ class Collection(object):
                 has_nanoseconds = (data.index.nanosecond > 0).any()
             
             if epochdate or ("datetime" in str(data.index.dtype) and has_nanoseconds):
-                data = utils.datetime_to_int64(data)
+                data = utils.datetime_to_int64(data, force=epochdate)
             old_index = dd.read_parquet(self._item_path(item, as_string=True),
                                         columns=[], engine=self.engine
                                         ).index.compute()

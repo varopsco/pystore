@@ -711,5 +711,83 @@ class TestRenameItem:
         assert rename_complete_logs[0].levelname == 'INFO'
 
 
+class TestDatetimeCompatibility:
+    """Regression tests for datetime compatibility paths."""
+
+    @pytest.fixture(autouse=True)
+    def setup(self):
+        self.test_dir = tempfile.mkdtemp()
+        pystore.set_path(self.test_dir)
+        yield
+        pystore.delete_stores()
+        if os.path.exists(self.test_dir):
+            shutil.rmtree(self.test_dir)
+
+    def test_epochdate_true_converts_datetime_index_to_epoch_int(self):
+        """epochdate=True should convert all DatetimeIndex resolutions to int64."""
+        store = pystore.store('test_store_epochdate', engine='pyarrow')
+        collection = store.collection('test_collection')
+
+        index = pd.date_range('2020-01-01', periods=2, freq='D')
+        data = pd.DataFrame({'a': [1, 2]}, index=index)
+
+        collection.write('item1', data, epochdate=True)
+
+        raw = collection.item('item1').to_pandas(parse_dates=False)
+        assert str(raw.index.dtype) == 'int64'
+
+        parsed = collection.item('item1').to_pandas(parse_dates=True)
+        assert isinstance(parsed.index, pd.DatetimeIndex)
+        assert parsed.index.equals(index)
+
+    def test_pyarrow_nanosecond_index_write_and_roundtrip(self):
+        """Nanosecond DatetimeIndex should remain writable and round-trip via to_pandas."""
+        store = pystore.store('test_store_ns_pyarrow', engine='pyarrow')
+        collection = store.collection('test_collection')
+
+        index = pd.to_datetime([
+            '2020-01-01 00:00:00.000000001',
+            '2020-01-01 00:00:00.000000002'
+        ])
+        data = pd.DataFrame({'a': [1, 2]}, index=index)
+
+        collection.write('item1', data)
+
+        raw = collection.item('item1').to_pandas(parse_dates=False)
+        assert str(raw.index.dtype) == 'int64'
+
+        parsed = collection.item('item1').to_pandas()
+        assert isinstance(parsed.index, pd.DatetimeIndex)
+        assert parsed.index.equals(index)
+
+    def test_fastparquet_ns_index_sets_int96_times(self, monkeypatch):
+        """fastparquet writes with ns index should set times='int96' automatically."""
+        pytest.importorskip("fastparquet")
+        import pystore.collection as collection_module
+
+        captured = {}
+
+        def fake_to_parquet(data, path, compression="snappy", engine=None, **kwargs):
+            captured["engine"] = engine
+            captured["kwargs"] = kwargs
+            os.makedirs(path, exist_ok=True)
+
+        monkeypatch.setattr(collection_module.dd, "to_parquet", fake_to_parquet)
+
+        store = pystore.store('test_store_ns_fastparquet', engine='fastparquet')
+        collection = store.collection('test_collection')
+
+        index = pd.to_datetime([
+            '2020-01-01 00:00:00.000000001',
+            '2020-01-01 00:00:00.000000002'
+        ])
+        data = pd.DataFrame({'a': [1, 2]}, index=index)
+
+        collection.write('item1', data)
+
+        assert captured["engine"] == "fastparquet"
+        assert captured["kwargs"].get("times") == "int96"
+
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])

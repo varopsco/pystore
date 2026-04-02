@@ -100,21 +100,25 @@ def read_csv(urlpath, *args, **kwargs):
     return df
 
 
-def datetime_to_int64(df):
+def datetime_to_int64(df, force=False):
     """ convert datetime index to epoch int
     allows for cross language/platform portability
     """
 
     # Check if this is a dask DataFrame with datetime index
     if isinstance(df.index, dd.Index) and "datetime" in str(df.index.dtype):
+        if force:
+            df.index = df.index.astype(np.int64)
         # For dask DataFrames, check nanoseconds using dask operations
-        if hasattr(df.index, 'nanosecond'):
+        elif hasattr(df.index, 'nanosecond'):
             has_nanoseconds = (df.index.nanosecond > 0).any()
             if has_nanoseconds.compute():
                 df.index = df.index.astype(np.int64)
     # Check if this is a pandas DataFrame with DatetimeIndex
     elif isinstance(df.index, pd.DatetimeIndex):
-        if hasattr(df.index, 'nanosecond') and (df.index.nanosecond > 0).any():
+        if force:
+            df.index = df.index.astype(np.int64)
+        elif hasattr(df.index, 'nanosecond') and (df.index.nanosecond > 0).any():
             df.index = df.index.astype(np.int64)
 
     return df
