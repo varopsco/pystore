@@ -180,8 +180,9 @@ class TestCLI:
         """Test delete command for nonexistent store with force flag."""
         with patch('sys.argv', ['pystore', 'delete', 'nonexistent', '--force']):
             result = main()
-            # Should handle error gracefully
-            assert result == 1 or result == 0
+            assert result == 1
+            captured = capsys.readouterr()
+            assert 'Error:' in captured.out
 
     def test_cli_delete_with_custom_path(self, capsys):
         """Test delete command with custom path."""

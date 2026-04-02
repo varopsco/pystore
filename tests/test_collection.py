@@ -19,6 +19,7 @@
 # limitations under the License.
 
 import os
+import time
 import shutil
 import tempfile
 import pytest
@@ -26,6 +27,16 @@ import pandas as pd
 import numpy as np
 
 import pystore
+
+
+def wait_for_condition(condition, timeout=5.0, interval=0.05):
+    """Wait for an observable condition to become True."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if condition():
+            return True
+        time.sleep(interval)
+    return condition()
 
 
 class TestCollection:
@@ -202,10 +213,9 @@ class TestCollection:
         # Delete with reload
         result = self.collection.delete_item('test_item', reload_items=True)
         assert result is True
-        # Note: reload_items=True starts a thread, so we check the actual list
-        import time
-        time.sleep(0.2)  # Give thread time to complete
-        assert 'test_item' not in self.collection.list_items()
+        assert wait_for_condition(
+            lambda: 'test_item' not in self.collection.list_items()
+        ), "Timed out waiting for item deletion to be reflected in item list"
 
     def test_collection_index(self):
         """Test getting index from item."""
@@ -528,14 +538,10 @@ class TestCollectionWriteThreaded:
         
         # Write using threaded method
         self.collection.write_threaded('test_item', data)
-        
-        # Give time for thread to complete
-        import time
-        time.sleep(0.5)
-        
-        # Verify item was written
-        items = self.collection.list_items()
-        assert 'test_item' in items
+
+        assert wait_for_condition(
+            lambda: 'test_item' in self.collection.list_items()
+        ), "Timed out waiting for threaded write to create item"
 
     def test_collection_append_threaded(self):
         """Test threaded append."""
@@ -547,15 +553,16 @@ class TestCollectionWriteThreaded:
         new_data = self._create_sample_data()
         new_data.index = [10, 11, 12]
         self.collection.append('test_item', new_data, threaded=True)
-        
-        # Give time for thread to complete
-        import time
-        time.sleep(0.5)
-        
-        # Verify data was appended
-        item = self.collection.item('test_item')
-        df = item.to_pandas()
-        assert len(df) == 6
+
+        def append_completed():
+            try:
+                return len(self.collection.item('test_item').to_pandas()) == 6
+            except Exception:
+                return False
+
+        assert wait_for_condition(
+            append_completed
+        ), "Timed out waiting for threaded append to finish"
 
 
 if __name__ == '__main__':
