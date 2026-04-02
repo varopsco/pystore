@@ -18,51 +18,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import codecs
-from os import path
-from setuptools import setup, find_packages
+"""Legacy setup.py for backwards compatibility with older pip versions."""
 
-here = path.abspath(path.dirname(__file__))
+from setuptools import setup
 
-# Get the long description from the README file
-with codecs.open(path.join(here, 'README.rst'), encoding='utf-8') as f:
-    long_description = f.read()
-
-setup(
-    name='PyStore',
-    version="0.1.22",
-    description='Fast data store for Pandas timeseries data',
-    long_description=long_description,
-    url='https://github.com/ranaroussi/pystore',
-    author='Ran Aroussi',
-    author_email='ran@aroussi.com',
-    license='Apache Software License',
-    classifiers=[
-        'License :: OSI Approved :: Apache Software License',
-        # 'Development Status :: 4 - Beta',
-        'Development Status :: 5 - Production/Stable',
-
-        'Operating System :: OS Independent',
-        'Intended Audience :: Developers',
-        'Topic :: Database',
-        'Topic :: Database :: Database Engines/Servers',
-        'Topic :: Software Development :: Libraries',
-        'Topic :: Software Development :: Libraries :: Python Modules',
-
-        'Programming Language :: Python :: 2.7',
-        'Programming Language :: Python :: 3.5',
-        'Programming Language :: Python :: 3.6',
-        'Programming Language :: Python :: 3.7',
-    ],
-    platforms=['linux', 'unix', 'macOS'],
-    keywords='dask, datastore, flatfile, pystore',
-    packages=find_packages(exclude=['contrib', 'docs', 'tests', 'examples']),
-    install_requires=['python-snappy', 'multitasking', 'toolz', 'partd',
-                      'cloudpickle', 'distributed', 'pandas', 'numpy',
-                      'fastparquet', 'dask'],
-    entry_points={
-        'console_scripts': [
-            'pystore=pystore.__main__:main',
-        ],
-    },
-)
+if __name__ == "__main__":
+    setup()

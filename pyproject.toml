@@ -1,0 +1,149 @@
+[build-system]
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "PyStore"
+version = "0.1.22"
+description = "Fast data store for Pandas timeseries data"
+readme = "README.rst"
+license = "Apache-2.0"
+authors = [
+    {name = "Ran Aroussi", email = "ran@aroussi.com"}
+]
+maintainers = [
+    {name = "Ran Aroussi", email = "ran@aroussi.com"}
+]
+keywords = ["dask", "datastore", "flatfile", "pystore", "timeseries", "pandas"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Operating System :: OS Independent",
+    "Intended Audience :: Developers",
+    "Topic :: Database",
+    "Topic :: Database :: Database Engines/Servers",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3 :: Only",
+]
+requires-python = ">=3.8"
+dependencies = [
+    "python-snappy>=0.7.0",
+    "multitasking>=0.0.9",
+    "toolz>=0.12.0",
+    "partd>=1.4.0",
+    "cloudpickle>=2.2.0",
+    "distributed>=2023.1.0",
+    "pandas>=1.5.0",
+    "numpy>=1.21.0",
+    "fastparquet>=2023.1.0",
+    "dask>=2023.1.0",
+    "pyarrow>=10.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=23.0.0",
+    "isort>=5.12.0",
+    "flake8>=6.0.0",
+    "mypy>=1.0.0",
+]
+test = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/ranaroussi/pystore"
+Documentation = "https://github.com/ranaroussi/pystore"
+Repository = "https://github.com/ranaroussi/pystore"
+Bug-tracker = "https://github.com/ranaroussi/pystore/issues"
+
+[project.scripts]
+pystore = "pystore.__main__:main"
+
+[tool.setuptools]
+packages = ["pystore"]
+
+[tool.setuptools.package-data]
+pystore = ["py.typed"]
+
+[tool.black]
+line-length = 88
+target-version = ["py38", "py39", "py310", "py311", "py312"]
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | _build
+  | buck-out
+  | build
+  | dist
+  | tests
+)/
+'''
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+line_length = 88
+known_first_party = ["pystore"]
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = "-ra -q --strict-markers"
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+show_warning_context = true
+
+[[tool.mypy.overrides]]
+module = [
+    "dask.*",
+    "distributed.*",
+    "fastparquet.*",
+    "snappy.*",
+    "toolz.*",
+    "partd.*",
+    "cloudpickle.*",
+    "multitasking.*",
+    "pyarrow.*",
+]
+ignore_missing_imports = true
+
+[tool.coverage.run]
+source = ["pystore"]
+omit = ["tests/*", "examples/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
