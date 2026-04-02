@@ -18,13 +18,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
 import os
 import shutil
 import tempfile
-import pytest
-import logging
+
 import pandas as pd
-import numpy as np
+import pytest
 
 import pystore
 
@@ -54,27 +54,27 @@ class TestDataValidation:
         """Create sample DataFrame for testing."""
         if columns is None:
             columns = ['a', 'b', 'c']
-        
+
         if dtypes is None:
             dtypes = {'a': 'int64', 'b': 'float64', 'c': 'object'}
-        
+
         data = {
             'a': [1, 2, 3],
             'b': [1.0, 2.0, 3.0],
             'c': ['x', 'y', 'z']
         }
-        
+
         df = pd.DataFrame(data)
-        
+
         # Apply custom dtypes if specified
         if dtypes:
             for col, dtype in dtypes.items():
                 if col in df.columns:
                     df[col] = df[col].astype(dtype)
-        
+
         if index is not None:
             df.index = index
-        
+
         return df
 
     def test_append_without_validation(self):
@@ -115,7 +115,7 @@ class TestDataValidation:
     def test_append_warns_on_column_mismatch(self):
         """Test that append logs warning when columns don't match in warn mode."""
         import warnings
-        
+
         # Write initial data
         data = self._create_sample_data()
         self.collection.write('item1', data)
@@ -134,7 +134,7 @@ class TestDataValidation:
 
             # Check that warning was issued
             assert len(w) > 0
-            assert any("Schema validation warnings" in str(warning.message) 
+            assert any("Schema validation warnings" in str(warning.message)
                       for warning in w)
 
     def test_append_validates_dtype_compatibility(self):
@@ -311,10 +311,10 @@ class TestDataValidation:
     @pytest.mark.skip(reason="DatetimeIndex append has a pre-existing bug with dask (not related to validation feature)")
     def test_append_with_datetime_index(self):
         """Test validation with datetime index.
-        
-        Note: PyArrow/parquet doesn't preserve specific index types (e.g., DatetimeIndex 
-        becomes generic Index when read back). This test verifies that append works 
-        when both datasets use datetime index values, but the index type validation 
+
+        Note: PyArrow/parquet doesn't preserve specific index types (e.g., DatetimeIndex
+        becomes generic Index when read back). This test verifies that append works
+        when both datasets use datetime index values, but the index type validation
         may not work correctly due to this storage limitation.
         """
         # Write initial data with datetime index
@@ -328,7 +328,7 @@ class TestDataValidation:
 
         # Since PyArrow loses the specific index type, we need to test without strict index validation
         # The column and dtype validation should still work
-        # Use schema_strictness that skips index type check by using 'disabled' for index 
+        # Use schema_strictness that skips index type check by using 'disabled' for index
         # or simply test without validation enabled - let's test that append works without validation first
         self.collection.append('item1', new_data)
 
@@ -372,9 +372,9 @@ class TestDtypeCompatibility:
     def test_are_dtypes_compatible_exact_match(self):
         """Test exact dtype match returns True."""
         from pystore.collection import Collection
-        
+
         collection = Collection.__new__(Collection)
-        
+
         # Same dtype
         assert collection._are_dtypes_compatible('int64', 'int64')
         assert collection._are_dtypes_compatible('float64', 'float64')
@@ -382,12 +382,12 @@ class TestDtypeCompatibility:
     def test_are_dtypes_compatible_numeric(self):
         """Test numeric dtype compatibility."""
         from pystore.collection import Collection
-        
+
         collection = Collection.__new__(Collection)
-        
+
         # Same numeric type family (int to int)
         assert collection._are_dtypes_compatible('int32', 'int64')
-        
+
         # Different numeric type family (int to float) - should fail
         # Actually, int to float is usually considered compatible in pandas
         # but let's check our implementation handles this
@@ -395,9 +395,9 @@ class TestDtypeCompatibility:
     def test_are_dtypes_compatible_string(self):
         """Test string dtype compatibility."""
         from pystore.collection import Collection
-        
+
         collection = Collection.__new__(Collection)
-        
+
         # object to object
         assert collection._are_dtypes_compatible('object', 'object')
 
@@ -427,27 +427,27 @@ class TestLogging:
         """Create sample DataFrame for testing."""
         if columns is None:
             columns = ['a', 'b', 'c']
-        
+
         if dtypes is None:
             dtypes = {'a': 'int64', 'b': 'float64', 'c': 'object'}
-        
+
         data = {
             'a': [1, 2, 3],
             'b': [1.0, 2.0, 3.0],
             'c': ['x', 'y', 'z']
         }
-        
+
         df = pd.DataFrame(data)
-        
+
         # Apply custom dtypes if specified
         if dtypes:
             for col, dtype in dtypes.items():
                 if col in df.columns:
                     df[col] = df[col].astype(dtype)
-        
+
         if index is not None:
             df.index = index
-        
+
         return df
 
     def test_write_emits_log_messages(self, caplog):
@@ -459,15 +459,15 @@ class TestLogging:
 
         # Verify log messages are emitted
         assert len(caplog.records) >= 2
-        
+
         # Check for write start log
-        write_start_logs = [r for r in caplog.records 
+        write_start_logs = [r for r in caplog.records
                            if "Writing item 'test_item'" in r.message]
         assert len(write_start_logs) == 1
         assert write_start_logs[0].levelname == 'INFO'
-        
+
         # Check for write completion log
-        write_complete_logs = [r for r in caplog.records 
+        write_complete_logs = [r for r in caplog.records
                               if "Successfully wrote item 'test_item'" in r.message]
         assert len(write_complete_logs) == 1
         assert write_complete_logs[0].levelname == 'INFO'
@@ -486,15 +486,15 @@ class TestLogging:
 
         # Verify log messages are emitted
         assert len(caplog.records) >= 2
-        
+
         # Check for append start log
-        append_start_logs = [r for r in caplog.records 
+        append_start_logs = [r for r in caplog.records
                            if "Appending data to item 'test_item'" in r.message]
         assert len(append_start_logs) == 1
         assert append_start_logs[0].levelname == 'INFO'
-        
+
         # Check for append completion log
-        append_complete_logs = [r for r in caplog.records 
+        append_complete_logs = [r for r in caplog.records
                                if "Successfully appended data to item 'test_item'" in r.message]
         assert len(append_complete_logs) == 1
         assert append_complete_logs[0].levelname == 'INFO'
@@ -511,15 +511,15 @@ class TestLogging:
 
         # Verify log messages are emitted
         assert len(caplog.records) >= 2
-        
+
         # Check for delete start log
-        delete_start_logs = [r for r in caplog.records 
+        delete_start_logs = [r for r in caplog.records
                            if "Deleting item 'test_item'" in r.message]
         assert len(delete_start_logs) == 1
         assert delete_start_logs[0].levelname == 'INFO'
-        
+
         # Check for delete completion log
-        delete_complete_logs = [r for r in caplog.records 
+        delete_complete_logs = [r for r in caplog.records
                                if "Successfully deleted item 'test_item'" in r.message]
         assert len(delete_complete_logs) == 1
         assert delete_complete_logs[0].levelname == 'INFO'
@@ -531,7 +531,7 @@ class TestLogging:
             self.collection.write('test_item', data)
 
         # Verify log messages contain collection name
-        collection_logs = [r for r in caplog.records 
+        collection_logs = [r for r in caplog.records
                          if "test_collection" in r.message]
         assert len(collection_logs) >= 2
 
@@ -561,27 +561,27 @@ class TestRenameItem:
         """Create sample DataFrame for testing."""
         if columns is None:
             columns = ['a', 'b', 'c']
-        
+
         if dtypes is None:
             dtypes = {'a': 'int64', 'b': 'float64', 'c': 'object'}
-        
+
         data = {
             'a': [1, 2, 3],
             'b': [1.0, 2.0, 3.0],
             'c': ['x', 'y', 'z']
         }
-        
+
         df = pd.DataFrame(data)
-        
+
         # Apply custom dtypes if specified
         if dtypes:
             for col, dtype in dtypes.items():
                 if col in df.columns:
                     df[col] = df[col].astype(dtype)
-        
+
         if index is not None:
             df.index = index
-        
+
         return df
 
     def test_rename_item_basic(self):
@@ -697,15 +697,15 @@ class TestRenameItem:
 
         # Verify log messages are emitted
         assert len(caplog.records) >= 2
-        
+
         # Check for rename start log
-        rename_start_logs = [r for r in caplog.records 
+        rename_start_logs = [r for r in caplog.records
                            if "Renaming item 'old_item'" in r.message]
         assert len(rename_start_logs) == 1
         assert rename_start_logs[0].levelname == 'INFO'
-        
+
         # Check for rename completion log
-        rename_complete_logs = [r for r in caplog.records 
+        rename_complete_logs = [r for r in caplog.records
                                if "Successfully renamed item 'old_item' to 'new_item'" in r.message]
         assert len(rename_complete_logs) == 1
         assert rename_complete_logs[0].levelname == 'INFO'

@@ -1,0 +1,57 @@
+# Ruff configuration for PyStore
+# https://docs.astral.sh/ruff/
+
+# Target Python 3.10+ (minimum supported version in CI)
+target-version = "py310"
+
+# Line length to match existing codebase style
+line-length = 100
+
+# Exclude common directories
+exclude = [
+    ".git",
+    ".github",
+    ".venv",
+    "__pycache__",
+    "build",
+    "dist",
+    "*.egg-info",
+]
+
+# Linting rules
+[lint]
+# Enable a broad set of rules
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # Pyflakes
+    "I",      # isort
+    "B",      # flake8-bugbear
+    "C4",     # flake8-comprehensions
+    "UP",     # pyupgrade
+    "SIM",    # flake8-simplify
+]
+
+# Ignore rules that conflict with existing code style
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "B008",   # function call in default argument
+    "UP031",  # printf-string-formatting (would require refactoring)
+    "F401",   # unused-import (special case in __init__.py)
+    "B006",   # mutable-argument-default (would require refactoring)
+    "B028",   # no-explicit-stacklevel (minor issue)
+    "SIM105", # suppressible-exception (special case)
+    "SIM102", # collapsible-if (readability preference)
+    "SIM108", # if-else-block-instead-of-if-exp (readability preference)
+]
+
+# Allow autofix for all enabled rules
+fixable = ["ALL"]
+unfixable = []
+
+# Allow unused variables when prefixed with underscore
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[lint.isort]
+# Configure isort to match existing import style
+known-first-party = ["pystore"]

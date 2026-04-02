@@ -6,3 +6,20 @@ PyStore.egg-info
 .DS_Store
 /.vscode
 /build
+
+# Testing
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Type checking
+.mypy_cache/
+
+# Linting
+.ruff_cache/
+
+# Virtual environments
+venv/
+.venv/
+env/

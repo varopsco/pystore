@@ -25,7 +25,7 @@ from . import utils
 from .collection import Collection
 
 
-class store(object):
+class store:
     def __repr__(self):
         return "PyStore.datastore <%s>" % self.datastore
 

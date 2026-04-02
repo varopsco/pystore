@@ -24,7 +24,7 @@ import pandas as pd
 from . import utils
 
 
-class Item(object):
+class Item:
     def __repr__(self):
         return "PyStore.item <%s/%s>" % (self.collection, self.item)
 

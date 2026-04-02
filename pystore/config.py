@@ -19,6 +19,7 @@
 # limitations under the License.
 
 import os as os
+
 from .utils import Path
 
 DEFAULT_PATH = os.environ.get("PYSTORE_PATH", Path.home() / "pystore")

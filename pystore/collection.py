@@ -18,22 +18,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
-import time
-import shutil
 import logging
+import os
+import shutil
+import time
+
 import dask.dataframe as dd
 import multitasking
 
-from . import utils
+from . import config, utils
 from .item import Item
-from . import config
-
 
 logger = logging.getLogger('pystore')
 
 
-class Collection(object):
+class Collection:
     def __repr__(self):
         return "PyStore.collection <%s>" % self.collection
 
@@ -433,7 +432,7 @@ class Collection(object):
         current = self.item(item)
         new = dd.from_pandas(data, npartitions=1)
 
-        # combine old dataframe with new and optionally remove duplicates from 
+        # combine old dataframe with new and optionally remove duplicates from
         # combined dataframe
         idx_name = data.index.name
         if remove_duplicates is None:
@@ -459,9 +458,9 @@ class Collection(object):
                 .set_index(idx_name)
         else:
             raise ValueError(
-                """argument remove_duplicates must either be None, 'index', 
-                'values', 'all' or 'values_in_index'""")     
-        
+                """argument remove_duplicates must either be None, 'index',
+                'values', 'all' or 'values_in_index'""")
+
         if npartitions is None:
             memusage = combined.memory_usage(deep=True).sum()
             if isinstance(combined, dd.DataFrame):

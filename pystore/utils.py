@@ -18,25 +18,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
-import logging
-from datetime import datetime
 import json
+import logging
+import os
 import shutil
-import pandas as pd
+from datetime import datetime
+
 import numpy as np
+import pandas as pd
 from dask import dataframe as dd
 from dask.distributed import Client
-
 
 try:
     from pathlib import Path
     Path().expanduser()
 except (ImportError, AttributeError):
-    from pathlib2 import Path
+    from pathlib2 import Path  # type: ignore[misc, no-redef]
 
 from . import config
-
 
 # Configure logger for pystore - use NullHandler by default (best practice for libraries)
 # Users can call configure_logging() to set up default logging behavior
@@ -46,10 +45,10 @@ logger.addHandler(logging.NullHandler())
 
 def configure_logging(level=logging.INFO, format_string=None):
     """Configure logging for pystore.
-    
+
     This function can be called at application startup to configure logging
     instead of configuring at module import time.
-    
+
     Args:
         level: Logging level (default: INFO)
         format_string: Custom format string for log messages
@@ -57,12 +56,12 @@ def configure_logging(level=logging.INFO, format_string=None):
     """
     if format_string is None:
         format_string = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    
+
     # Remove any existing handlers (except NullHandler)
     for handler in logger.handlers[:]:
         if not isinstance(handler, logging.NullHandler):
             logger.removeHandler(handler)
-    
+
     # Add StreamHandler with the specified level and format
     handler = logging.StreamHandler()
     formatter = logging.Formatter(format_string)
